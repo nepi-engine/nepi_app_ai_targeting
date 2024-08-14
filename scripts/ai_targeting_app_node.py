@@ -390,7 +390,7 @@ class NepiAiTargetingApp(object):
         #rospy.logwarn(depth_map_topic)
         if image_topic != "":
           if self.image_sub != None:
-            self.image_sub.Unregister()
+            self.image_sub.unregister()
             self.image_sub = None
             time.sleep(1)
           self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 10)
@@ -404,7 +404,7 @@ class NepiAiTargetingApp(object):
         #rospy.logwarn(depth_map_topic)
         if depth_map_topic != "":
           if self.depth_map_sub != None:
-            self.depth_map_sub.Unregister()
+            self.depth_map_sub.unregister()
             self.depth_map_sub = None
             time.sleep(1)
           self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
@@ -415,7 +415,7 @@ class NepiAiTargetingApp(object):
         self.pointcloud_topic = pointcloud_topic
         if pointcloud_topic != "":
           if self.pointcloud_sub != None:
-            self.pointcloud_sub.Unregister()
+            self.pointcloud_sub.unregister()
             self.pointcloud_sub = None
             time.sleep(1)
           self.pointcloud_sub = rospy.Subscriber(pointcloud_topic, PointCloud2, self.pointcloudCb, queue_size = 10)
@@ -423,15 +423,15 @@ class NepiAiTargetingApp(object):
 
     else:  # Turn off targeting subscribers and reset last image topic
       if self.image_sub != None:
-        self.image_sub.Unregister()
+        self.image_sub.unregister()
         self.current_image_topic = "None"
         self.current_image_header = Header()
       if self.depth_map_sub != None:
-        self.depth_map_sub.Unregister()
+        self.depth_map_sub.unregister()
         self.depth_map_topic = "None"
         self.depth_map_header = Header()
       if self.pointcloud_sub != None:
-        self.pointcloud_sub.Unregister()
+        self.pointcloud_sub.unregister()
         self.pointcloud_topic = ""
 
       self.last_image_topic = "None"
@@ -488,6 +488,7 @@ class NepiAiTargetingApp(object):
     bbs3d = []
     detect_boxes_msg = copy.deepcopy(self.detect_boxes_msg)
     targeting_boxes_msg = copy.deepcopy(detect_boxes_msg)
+    target_uids = []
     if detect_boxes_msg is not None:
       targeting_boxes_msg.bounding_boxes = [] 
       detect_header = detect_boxes_msg.header
@@ -543,7 +544,7 @@ class NepiAiTargetingApp(object):
           #### NEED TO Calculate Unique IDs
           uid_suffix = 0
           target_uid = box.Class + "_" + str(box.id) + "_"  + str(uid_suffix)# Need to add unque id tracking
-          while target_uid in  self.current_targets_dict.keys():
+          while target_uid in target_uids:
             uid_suffix += 1
             target_uid = box.Class + "_" + str(box.id) + "_"  + str(uid_suffix)
 
