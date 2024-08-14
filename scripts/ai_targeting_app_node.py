@@ -156,7 +156,7 @@ class NepiAiTargetingApp(object):
       self.resetParamServer(do_updates)
 
   def resetParamServer(self,do_updates = True):
-      rospy.get_param('~targeting_enabled', self.init_enable_targeting)
+      rospy.set_param('~targeting_enabled', self.init_enable_targeting)
       rospy.set_param('~last_classiier', self.init_last_classifier)
       rospy.set_param('~selected_classes_dict', self.init_selected_classes_dict)
       rospy.set_param('~image_fov_vert',  self.init_image_fov_vert)
