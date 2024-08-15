@@ -59,7 +59,7 @@ class NepiAiTargetingApp(object):
   FACTORY_FOV_VERT_DEG=70 # Camera Vertical Field of View (FOV)
   FACTORY_FOV_HORZ_DEG=110 # Camera Horizontal Field of View (FOV)
   FACTORY_TARGET_BOX_REDUCTION_PERCENT=50 # Sets the percent of target box around center to use for range calc
-  FACTORY_TARGET_DEPTH_METERS=0.3 # Sets the depth filter around mean depth to use for range calc
+  FACTORY_TARGET_DEPTH_METERS=0.5 # Sets the depth filter around mean depth to use for range calc
   FACTORY_TARGET_MIN_POINTS=10 # Sets the minimum number of valid points to consider for a valid range
   FACTORY_TARGET_MAX_AGE_SEC=10 # Remove lost targets from dictionary if older than this age
 
@@ -95,13 +95,14 @@ class NepiAiTargetingApp(object):
   pointcloud_sub = None
 
   detect_boxes_msg = None
-  bounding_box_3d_list = None
+  targeting_box_3d_list = None
 
   last_targeting_enable = False
   last_image_topic = "None"
   
   selected_classes_dict = dict()
   current_targets_dict = dict()
+  last_targets_dict = dict()
   lost_targets_dict = dict()
   selected_target = "All"
 
@@ -212,8 +213,8 @@ class NepiAiTargetingApp(object):
 
   def addClassCb(self,msg):
     ##rospy.loginfo(msg)
-    class_name = msg.class_name
-    class_depth_m = msg.class_depth_m
+    class_name = msg.data
+    class_depth_m = rospy.get_param('~default_target_depth',  self.init_default_target_depth)
     if class_name == msg.class_name:
       selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
       selected_classes_dict[class_name] = {'depth': class_depth_m}
@@ -301,21 +302,20 @@ class NepiAiTargetingApp(object):
     self.initParamServerValues(do_updates=False)
 
     # AI Management Scubscirbers and publishers
-    '''
+  
     rospy.Subscriber('~start_classifier', ClassifierSelection, self.startClassifierCb)
     self.start_classifier_pub = rospy.Publisher(NEPI_BASE_NAMESPACE + "ai_detector_mgr/start_classifier", ClassifierSelection, queue_size=1)
     rospy.Subscriber('~stop_classifier', Empty, self.stopClassifierCb)
     self.stop_classifier_pub = rospy.Publisher(NEPI_BASE_NAMESPACE + "ai_detector_mgr/stop_classifier", Empty, queue_size=1)
     rospy.Subscriber('~set_threshold', Float32, self.setThresholdCb) 
     self.set_threshold_pub = rospy.Publisher(NEPI_BASE_NAMESPACE + "ai_detector_mgr/set_threshold", Float32, queue_size=1)
-    '''
 
     # App Specific Subscribers
     
     enable_targeting_sub = rospy.Subscriber('~targeting_enabled', Bool, self.addAllClassesCb, queue_size = 10)
     add_all_sub = rospy.Subscriber('~add_all_target_classes', Empty, self.addAllClassesCb, queue_size = 10)
     remove_all_sub = rospy.Subscriber('~remove_all_target_classes', Empty, self.removeAllClassesCb, queue_size = 10)
-    add_class_sub = rospy.Subscriber('~add_target_class', AiTargetingAddClass, self.addClassCb, queue_size = 10)
+    add_class_sub = rospy.Subscriber('~add_target_class', String, self.addClassCb, queue_size = 10)
     remove_class_sub = rospy.Subscriber('~remove_target_class', String, self.removeClassCb, queue_size = 10)
     select_target_sub = rospy.Subscriber('~select_target', String, self.selectTargetCb, queue_size = 10)
     vert_fov_sub = rospy.Subscriber("~set_image_fov_vert", Float32, self.setVertFovCb, queue_size = 10)
@@ -343,9 +343,9 @@ class NepiAiTargetingApp(object):
     self.status_pub = rospy.Publisher("~status", AiTargetingStatus, queue_size=1, latch=True)
     self.targeting_boxes_2d_pub = rospy.Publisher("~targeting_boxes_2d", BoundingBoxes, queue_size=1)
     self.targeting_boxes_3d_pub = rospy.Publisher("~targeting_boxes_3d", BoundingBoxes3D, queue_size=1)
-    self.target_localizations_pub = rospy.Publisher("~target_localizations", TargetLocalizations, queue_size=1)
+    self.target_localizations_pub = rospy.Publisher("~targeting_localizations", TargetLocalizations, queue_size=1)
     self.image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1)
-    self.pointcloud_pub = rospy.Publisher("~target_pointcloud",PointCloud2,queue_size=1)
+    self.pointcloud_pub = rospy.Publisher("~targeting_pointcloud",PointCloud2,queue_size=1)
     time.sleep(1)
     ## Initiation Complete
     rospy.loginfo("AI_TRG_APP: Initialization Complete")
@@ -401,7 +401,7 @@ class NepiAiTargetingApp(object):
         depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
         depth_map_topic = nepi_ros.find_topic(depth_map_topic)
         self.depth_map_topic = depth_map_topic
-        #rospy.logwarn(depth_map_topic)
+        #rospy.logwarn(self.depth_map_topic)
         if depth_map_topic != "":
           if self.depth_map_sub != None:
             self.depth_map_sub.unregister()
@@ -413,6 +413,7 @@ class NepiAiTargetingApp(object):
         pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
         pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
         self.pointcloud_topic = pointcloud_topic
+        #rospy.logwarn(self.depth_map_topic)
         if pointcloud_topic != "":
           if self.pointcloud_sub != None:
             self.pointcloud_sub.unregister()
@@ -443,7 +444,7 @@ class NepiAiTargetingApp(object):
         #o3d_pc = nepi_pc.create_empty_o3dpc()
         #ros_pc = nepi_pc.o3dpc_to_rospc(o3d_pc,rospy.Time.now())
         #self.pointcloud_pub.publish(ros_pc)
-    #self.publish_status()
+
 
   ### Monitor Output of AI model to clear detection status
   def found_object_callback(self,found_obj_msg):
@@ -451,7 +452,7 @@ class NepiAiTargetingApp(object):
     if found_obj_msg.count == 0:
       #print("No objects detected")
       self.detect_boxes_msg = None
-      self.bounding_box_3d_list = None
+      self.targeting_box_3d_list = None
 
 
   ### If object(s) detected, save bounding box info to global
@@ -547,7 +548,8 @@ class NepiAiTargetingApp(object):
           while target_uid in target_uids:
             uid_suffix += 1
             target_uid = box.Class + "_" + str(box.id) + "_"  + str(uid_suffix)
-
+          target_uids.append(target_uid)
+          bounding_box_3d_msg = None
           if self.selected_target == "All" or self.selected_target == target_uid:
             # Updated Bounding Box 2d
             bounding_box_msg = BoundingBox()
@@ -568,7 +570,6 @@ class NepiAiTargetingApp(object):
             tls.append(target_data_msg)
 
             # Create Bounding Box 3d
-            bounding_box_3d_msg = None
             if target_range_m != -999:
               # Calculate Bounding Box 3D
               bounding_box_3d_msg = BoundingBox3D()
@@ -585,7 +586,7 @@ class NepiAiTargetingApp(object):
               phi_rad = phi_deg * math.pi/180 # Horz Angle 0 - 2 PI from from X axis counter clockwise
               #rospy.logwarn([theta_deg,phi_deg])
               bbc.x = target_range_m * math.sin(theta_rad) * math.cos(phi_rad)
-              bbc.y = target_range_m * math.cos(theta_rad) * math.sin(phi_rad)
+              bbc.y = - target_range_m * math.cos(theta_rad) * math.sin(phi_rad)
               bbc.z = target_range_m * math.cos(theta_rad)
               bounding_box_3d_msg.box_center_m.x = bbc.x
               bounding_box_3d_msg.box_center_m.y = bbc.y
@@ -671,13 +672,17 @@ class NepiAiTargetingApp(object):
       #rospy.logwarn(now_timestamp)
       #rospy.logwarn(last_timestamp)
       age = now_timestamp - last_timestamp
+      #rospy.logwarn("Target " + target + " age: " + str(age))
       if age > rospy.Duration(age_filter_sec):
         purge_list.append(target)
+    #rospy.logwarn("Target Purge List: " + str(purge_list))
     for target in purge_list: 
         self.lost_targets_dict[target] = self.current_targets_dict[target]
         del self.current_targets_dict[target]
 
-
+    if self.current_targets_dict.keys() != self.last_targets_dict.keys():
+      self.publish_status()
+    self.last_targets_dict = copy.deepcopy(self.current_targets_dict)
     # Publish and Save 2D Bounding Boxes
     if len(bbs2d) > 0:
       detect_boxes_msg.bounding_boxes = bbs2d
@@ -701,7 +706,7 @@ class NepiAiTargetingApp(object):
       self.save_data2file('ai_targeting_app','targeting_localizations',target_locs_msg,ros_timestamp)
 
     # Publish and Save 3D Bounding Boxes
-    self.bounding_box_3d_list = bbs3d
+    self.targeting_box_3d_list = bbs3d
     #rospy.logwarn("")
     #rospy.logwarn(bbs3d)
     if len(bbs3d) > 0:
@@ -747,27 +752,24 @@ class NepiAiTargetingApp(object):
     self.np_depth_array_m[np.isinf(self.np_depth_array_m)] = 0 # zero pixels with inf value
 
   def pointcloudCb(self,pointcloud2_msg):
-      pass
-      '''
       ros_timestamp = pointcloud2_msg.header.stamp
-      bounding_box_3d_list = copy.deepcopy(self.bounding_box_3d_list)
+      targeting_box_3d_list = copy.deepcopy(self.targeting_box_3d_list)
       bb3d = None
-      if bounding_box_3d_list is not None:
-        for i in range(len(bounding_box_3d_list)):
-          if self.selected_target != "All" and bounding_box_3d_list[i].uid == self.selected_target:
-            bb3d = bounding_box_3d_list[i]
+      if targeting_box_3d_list is not None:
+        for i in range(len(targeting_box_3d_list)):
+          if self.selected_target != "All" and targeting_box_3d_list[i].uid == self.selected_target:
+            bb3d = targeting_box_3d_list[i]
         if bb3d != None:
-          o3d_pc = rospc_to_o3dpc(pointcloud2_msg, remove_nans=True)
+          o3d_pc = nepi_pc.rospc_to_o3dpc(pointcloud2_msg, remove_nans=True)
           bounding_box_center = [bb3d.box_center_m.x,bb3d.box_center_m.y,bb3d.box_center_m.z]
-          bounding_box_extent = [bb3d.box_extent_m.x,bb3d.box_extent_m.y,bb3d.box_extent_m.z]
+          bounding_box_extent = [bb3d.box_extent_xyz_m.x,bb3d.box_extent_xyz_m.y,bb3d.box_extent_xyz_m.z]
           bounding_box_rotation = [bb3d.box_rotation_rpy_deg.x,bb3d.box_rotation_rpy_deg.y,bb3d.box_rotation_rpy_deg.z]
-          o3d_pc_clipped = nepi_pc.clip_bounding_box(o3d_pc_clipped, bb3d)
+          o3d_pc_clipped = nepi_pc.clip_bounding_box(o3d_pc,bounding_box_center,bounding_box_extent,bounding_box_rotation)
           ros_pc = nepi_pc.o3dpc_to_rospc(o3d_pc_clipped)
-          ros_pc.header = msg.header
+          ros_pc.header = pointcloud2_msg.header
           if not rospy.is_shutdown():
             self.pointcloud_pub.publish(ros_pc)
           self.save_pc2file('ai_targeting_app','targeting_pointcloud',o3d_pc_clipped,ros_timestamp)
-      '''
 
 
   ###################
@@ -794,13 +796,19 @@ class NepiAiTargetingApp(object):
     status_msg.selected_classes_list = str(classes_list)
     status_msg.selected_classes_depth_list = str(depth_list)
 
+
+    targets_list = self.current_targets_dict.keys()
+    avail_targets_list = ["All"]
+    if self.selected_target != "All" and self.selected_target not in targets_list:
+      avail_targets_list.append(self.selected_target)
+    for target in targets_list:
+      avail_targets_list.append(target) 
+    rospy.logwarn("Targets List: " + str(targets_list))
+    rospy.logwarn("Available Targets List: " + str(avail_targets_list))
+    status_msg.available_targets_list = str(avail_targets_list)
+
     status_msg.selected_target = self.selected_target
-    targets_list = ["All"]
-    if self.selected_target != "All" and self.selected_target not in self.current_targets_dict.keys():
-      targets_list.append(self.selected_target)
-    for target in self.current_targets_dict.keys():
-      targets_list.append(target) 
-    status_msg.available_targets_list = str(targets_list)
+
 
     status_msg.image_fov_vert_degs = rospy.get_param('~image_fov_vert',  self.init_image_fov_vert)
     status_msg.image_fov_horz_degs = rospy.get_param('~image_fov_horz', self.init_image_fov_horz)
