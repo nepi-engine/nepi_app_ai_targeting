@@ -544,7 +544,7 @@ class NepiAiTargetingApp(object):
 
           #### NEED TO Calculate Unique IDs
           uid_suffix = 0
-          target_uid = box.Class + "_" + str(box.id) + "_"  + str(uid_suffix)# Need to add unque id tracking
+          target_uid = box.Class + "_" + str(uid_suffix)# Need to add unque id tracking
           while target_uid in target_uids:
             uid_suffix += 1
             target_uid = box.Class + "_" + str(box.id) + "_"  + str(uid_suffix)
@@ -571,6 +571,7 @@ class NepiAiTargetingApp(object):
 
             # Create Bounding Box 3d
             if target_range_m != -999:
+              target_depth = selected_classes_dict[box.Class]['depth']
               # Calculate Bounding Box 3D
               bounding_box_3d_msg = BoundingBox3D()
               bounding_box_3d_msg.Class = box.Class
@@ -588,15 +589,15 @@ class NepiAiTargetingApp(object):
               bbc.x = target_range_m * math.sin(theta_rad) * math.cos(phi_rad)
               bbc.y = - target_range_m * math.cos(theta_rad) * math.sin(phi_rad)
               bbc.z = target_range_m * math.cos(theta_rad)
-              bounding_box_3d_msg.box_center_m.x = bbc.x
+              bounding_box_3d_msg.box_center_m.x = bbc.x - target_depth / 2
               bounding_box_3d_msg.box_center_m.y = bbc.y
-              bounding_box_3d_msg.box_center_m.z = bbc.z
+              bounding_box_3d_msg.box_center_m.z = bbc.z 
               # Calculate the Box Extent
               bbe = Vector3()  
               mpp_vert_at_range = 2 * target_range_m * math.sin(image_fov_vert/2 * math.pi/180) / self.img_height
               mpp_horz_at_range = 2* target_range_m * math.sin(image_fov_horz/2 * math.pi/180) / self.img_width
               mpp_at_range = (mpp_vert_at_range + mpp_horz_at_range) / 2  #  ToDo: More accurate calc
-              bbe.x = selected_classes_dict[box.Class]['depth']
+              bbe.x = target_depth
               bbe.y = mpp_at_range * (box.xmax-box.xmin)
               bbe.z = mpp_at_range * (box.ymax-box.ymin)
               bounding_box_3d_msg.box_extent_xyz_m.x = bbe.x
@@ -754,22 +755,25 @@ class NepiAiTargetingApp(object):
   def pointcloudCb(self,pointcloud2_msg):
       ros_timestamp = pointcloud2_msg.header.stamp
       targeting_box_3d_list = copy.deepcopy(self.targeting_box_3d_list)
+      #rospy.logwarn(str(targeting_box_3d_list))
       bb3d = None
       if targeting_box_3d_list is not None:
         for i in range(len(targeting_box_3d_list)):
           if self.selected_target != "All" and targeting_box_3d_list[i].uid == self.selected_target:
             bb3d = targeting_box_3d_list[i]
+        #rospy.logwarn(str(bb3d))
         if bb3d != None:
+          rospy.logwarn("Selected target 3d bounding box: " + str(bb3d))
           o3d_pc = nepi_pc.rospc_to_o3dpc(pointcloud2_msg, remove_nans=True)
           bounding_box_center = [bb3d.box_center_m.x,bb3d.box_center_m.y,bb3d.box_center_m.z]
           bounding_box_extent = [bb3d.box_extent_xyz_m.x,bb3d.box_extent_xyz_m.y,bb3d.box_extent_xyz_m.z]
           bounding_box_rotation = [bb3d.box_rotation_rpy_deg.x,bb3d.box_rotation_rpy_deg.y,bb3d.box_rotation_rpy_deg.z]
-          o3d_pc_clipped = nepi_pc.clip_bounding_box(o3d_pc,bounding_box_center,bounding_box_extent,bounding_box_rotation)
-          ros_pc = nepi_pc.o3dpc_to_rospc(o3d_pc_clipped)
+          o3d_pc = nepi_pc.clip_bounding_box(o3d_pc,bounding_box_center,bounding_box_extent,bounding_box_rotation)
+          ros_pc = nepi_pc.o3dpc_to_rospc(o3d_pc)
           ros_pc.header = pointcloud2_msg.header
           if not rospy.is_shutdown():
             self.pointcloud_pub.publish(ros_pc)
-          self.save_pc2file('ai_targeting_app','targeting_pointcloud',o3d_pc_clipped,ros_timestamp)
+          #self.save_pc2file('ai_targeting_app','targeting_pointcloud',o3d_pc,ros_timestamp)
 
 
   ###################
@@ -803,8 +807,8 @@ class NepiAiTargetingApp(object):
       avail_targets_list.append(self.selected_target)
     for target in targets_list:
       avail_targets_list.append(target) 
-    rospy.logwarn("Targets List: " + str(targets_list))
-    rospy.logwarn("Available Targets List: " + str(avail_targets_list))
+    #rospy.logwarn("Targets List: " + str(targets_list))
+    #rospy.logwarn("Available Targets List: " + str(avail_targets_list))
     status_msg.available_targets_list = str(avail_targets_list)
 
     status_msg.selected_target = self.selected_target
