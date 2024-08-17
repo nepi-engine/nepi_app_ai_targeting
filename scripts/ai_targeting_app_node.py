@@ -58,7 +58,8 @@ class NepiAiTargetingApp(object):
   FACTORY_TARGETING_ENBABLED=True
   FACTORY_FOV_VERT_DEG=70 # Camera Vertical Field of View (FOV)
   FACTORY_FOV_HORZ_DEG=110 # Camera Horizontal Field of View (FOV)
-  FACTORY_TARGET_BOX_REDUCTION_PERCENT=50 # Sets the percent of target box around center to use for range calc
+  FACTORY_TARGET_BOX_ADJUST_PERCENT=50 # percent ajustment on detection box around center to use for range calc
+  FACTORY_POINTCLOUD_ADJUST_PERCENT=200 # percent ajustment on detection box around center to use for pointcloud clipping
   FACTORY_TARGET_DEPTH_METERS=0.5 # Sets the depth filter around mean depth to use for range calc
   FACTORY_TARGET_MIN_POINTS=10 # Sets the minimum number of valid points to consider for a valid range
   FACTORY_TARGET_MAX_AGE_SEC=10 # Remove lost targets from dictionary if older than this age
@@ -108,7 +109,11 @@ class NepiAiTargetingApp(object):
 
   targeting_class_list = []
   targeting_target_list = []
+  image_pub = None
 
+  has_depth_map = False
+  has_pointcloud = False
+  pointcloud_pub = None
   seq = 0
 
   #######################
@@ -123,10 +128,11 @@ class NepiAiTargetingApp(object):
     rospy.set_param('~selected_classes_dict', dict())
     rospy.set_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
     rospy.set_param('~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
-    rospy.set_param('~target_box_reduction',  self.FACTORY_TARGET_BOX_REDUCTION_PERCENT)
+    rospy.set_param('~target_box_adjust',  self.FACTORY_TARGET_BOX_ADJUST_PERCENT)
     rospy.set_param('~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
     rospy.set_param('~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
     rospy.set_param('~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
+    rospy.set_param('~pc_clip_adjust', self.FACTORY_POINTCLOUD_ADJUST_PERCENT)
     self.current_targets_dict = dict()
     self.lost_targets_dict = dict()
     self.publish_status()
@@ -150,10 +156,11 @@ class NepiAiTargetingApp(object):
       self.init_selected_classes_dict = rospy.get_param('~selected_classes_dict', dict())
       self.init_image_fov_vert = rospy.get_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
       self.init_image_fov_horz = rospy.get_param('~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
-      self.init_target_box_reduction = rospy.get_param('~target_box_reduction',  self.FACTORY_TARGET_BOX_REDUCTION_PERCENT)
+      self.init_target_box_adjust = rospy.get_param('~target_box_adjust',  self.FACTORY_TARGET_BOX_ADJUST_PERCENT)
       self.init_default_target_depth = rospy.get_param('~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
       self.init_target_min_points = rospy.get_param('~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
       self.init_target_age_filter = rospy.get_param('~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
+      self.init_pc_clip_adjust = rospy.get_param('~pc_clip_adjust', self.FACTORY_POINTCLOUD_ADJUST_PERCENT)
       self.resetParamServer(do_updates)
 
   def resetParamServer(self,do_updates = True):
@@ -162,10 +169,11 @@ class NepiAiTargetingApp(object):
       rospy.set_param('~selected_classes_dict', self.init_selected_classes_dict)
       rospy.set_param('~image_fov_vert',  self.init_image_fov_vert)
       rospy.set_param('~image_fov_horz', self.init_image_fov_horz)
-      rospy.set_param('~target_box_reduction',  self.init_target_box_reduction)
+      rospy.set_param('~target_box_adjust',  self.init_target_box_adjust)
       rospy.set_param('~default_target_depth',  self.init_default_target_depth)
       rospy.set_param('~target_min_points', self.init_target_min_points)
       rospy.set_param('~target_age_filter', self.init_target_age_filter)
+      rospy.set_param('~pc_clip_adjust',self.init_pc_clip_adjust)
       if do_updates:
           self.updateFromParamServer()
           self.publish_status()
@@ -252,12 +260,20 @@ class NepiAiTargetingApp(object):
       rospy.set_param('~image_fov_horz',  fov)
     self.publish_status()
     
-  def setBoxReductionCb(self,msg):
+  def setBoxAdjustCb(self,msg):
     #rospy.loginfo(msg)
     val = msg.data
     if val >= 0 and val <= 1:
-      rospy.set_param('~target_box_reduction',val)
+      rospy.set_param('~target_box_adjust',val)
     self.publish_status()   
+
+
+  def setPcAdjustCb(self,msg):
+    #rospy.loginfo(msg)
+    val = msg.data
+    if val >= 0 and val <= 1:
+      rospy.set_param('~pc_clip_adjust',val)
+    self.publish_status() 
       
   def setDefaultTargetDepthCb(self,msg):
     #rospy.loginfo(msg)
@@ -320,7 +336,8 @@ class NepiAiTargetingApp(object):
     select_target_sub = rospy.Subscriber('~select_target', String, self.selectTargetCb, queue_size = 10)
     vert_fov_sub = rospy.Subscriber("~set_image_fov_vert", Float32, self.setVertFovCb, queue_size = 10)
     horz_fov_sub = rospy.Subscriber("~set_image_fov_horz", Float32, self.setHorzFovCb, queue_size = 10)
-    box_reduction_sub = rospy.Subscriber("~set_box_reduction_percent", Float32, self.setBoxReductionCb, queue_size = 10)
+    box_reduction_sub = rospy.Subscriber("~set_box_adjust_percent", Int32, self.setBoxAdjustCb, queue_size = 10)
+    pc_increase_sub = rospy.Subscriber("~set_pc_clip_adjust_percent", Int32, self.setPcAdjustCb, queue_size = 10)
     default_target_depth_sub = rospy.Subscriber("~set_default_target_detpth", Float32, self.setDefaultTargetDepthCb, queue_size = 10)
     target_min_points_sub = rospy.Subscriber("~set_target_min_points", Int32, self.setTargetMinPointsCb, queue_size = 10)
     age_filter_sub = rospy.Subscriber("~set_age_filter", Float32, self.setAgeFilterCb, queue_size = 10)
@@ -344,8 +361,6 @@ class NepiAiTargetingApp(object):
     self.targeting_boxes_2d_pub = rospy.Publisher("~targeting_boxes_2d", BoundingBoxes, queue_size=1)
     self.targeting_boxes_3d_pub = rospy.Publisher("~targeting_boxes_3d", BoundingBoxes3D, queue_size=1)
     self.target_localizations_pub = rospy.Publisher("~targeting_localizations", TargetLocalizations, queue_size=1)
-    self.image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1)
-    self.pointcloud_pub = rospy.Publisher("~targeting_pointcloud",PointCloud2,queue_size=1)
     time.sleep(1)
     ## Initiation Complete
     rospy.loginfo("AI_TRG_APP: Initialization Complete")
@@ -392,7 +407,9 @@ class NepiAiTargetingApp(object):
           if self.image_sub != None:
             self.image_sub.unregister()
             self.image_sub = None
-            time.sleep(1)
+          if self.image_pub == None:
+            self.image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1)
+          time.sleep(1)
           self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 10)
           self.current_image_topic = image_topic
           update_status = True
@@ -410,40 +427,47 @@ class NepiAiTargetingApp(object):
           self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
           update_status = True
 
-        pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
-        pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
-        self.pointcloud_topic = pointcloud_topic
-        #rospy.logwarn(self.depth_map_topic)
-        if pointcloud_topic != "":
-          if self.pointcloud_sub != None:
-            self.pointcloud_sub.unregister()
-            self.pointcloud_sub = None
+          # If there is a depth_map, check for pointdcloud
+          pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
+          pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
+          self.pointcloud_topic = pointcloud_topic
+          #rospy.logwarn(self.depth_map_topic)
+          if pointcloud_topic != "":
+            if self.pointcloud_sub != None:
+              self.pointcloud_sub.unregister()
+              self.pointcloud_sub = None
+            if self.pointcloud_pub == None:
+              self.pointcloud_pub = rospy.Publisher("~targeting_pointcloud",PointCloud2,queue_size=1)
             time.sleep(1)
-          self.pointcloud_sub = rospy.Subscriber(pointcloud_topic, PointCloud2, self.pointcloudCb, queue_size = 10)
-          update_status = True
+            self.pointcloud_sub = rospy.Subscriber(pointcloud_topic, PointCloud2, self.pointcloudCb, queue_size = 10)
+            self.has_pointcloud = True
+            update_status = True
 
     else:  # Turn off targeting subscribers and reset last image topic
       if self.image_sub != None:
         self.image_sub.unregister()
         self.current_image_topic = "None"
         self.current_image_header = Header()
+        self.last_image_topic = "None"
+      if self.image_sub != None:
+        self.image_sub.unregister()
+        self.image_sub = None
       if self.depth_map_sub != None:
         self.depth_map_sub.unregister()
         self.depth_map_topic = "None"
+        self.has_depth_map = False
         self.depth_map_header = Header()
       if self.pointcloud_sub != None:
         self.pointcloud_sub.unregister()
         self.pointcloud_topic = ""
-
-      self.last_image_topic = "None"
+        self.has_pointcloud = False
+      if self.pointcloud_pub != None:
+        self.pointcloud_pub.unregister()
+        
       time.sleep(1)
     if update_status == True:
       self.publish_status()
-    if self.pointcloud_topic == "":
-        pass
-        #o3d_pc = nepi_pc.create_empty_o3dpc()
-        #ros_pc = nepi_pc.o3dpc_to_rospc(o3d_pc,rospy.Time.now())
-        #self.pointcloud_pub.publish(ros_pc)
+
 
 
   ### Monitor Output of AI model to clear detection status
@@ -482,7 +506,7 @@ class NepiAiTargetingApp(object):
     # Iterate over all of the objects and calculate range and bearing data
     image_fov_vert = rospy.get_param('~image_fov_vert',  self.init_image_fov_vert)
     image_fov_horz = rospy.get_param('~image_fov_horz', self.init_image_fov_horz)
-    target_reduction_percent = rospy.get_param('~target_box_reduction',  self.init_target_box_reduction)
+    target_box_adjust_percent = rospy.get_param('~target_box_adjust',  self.init_target_box_adjust)
     target_min_points = rospy.get_param('~target_min_points',  self.init_target_min_points)
     bbs2d = []
     tls = []
@@ -503,8 +527,8 @@ class NepiAiTargetingApp(object):
           # Get target label
           target_label=box.Class
           # reduce target box based on user settings
-          box_reduction_y_pix=int(float((box.ymax - box.ymin))*float(target_reduction_percent )/100/2)
-          box_reduction_x_pix=int(float((box.xmax - box.xmin))*float(target_reduction_percent )/100/2)
+          box_reduction_y_pix=int(float((box.ymax - box.ymin))*float(target_box_adjust_percent )/100/2)
+          box_reduction_x_pix=int(float((box.xmax - box.xmin))*float(target_box_adjust_percent )/100/2)
           ymin_adj=int(box.ymin + box_reduction_y_pix)
           ymax_adj=int(box.ymax - box_reduction_y_pix)
           xmin_adj=box.xmin + box_reduction_x_pix
@@ -547,7 +571,7 @@ class NepiAiTargetingApp(object):
           target_uid = box.Class + "_" + str(uid_suffix)# Need to add unque id tracking
           while target_uid in target_uids:
             uid_suffix += 1
-            target_uid = box.Class + "_" + str(box.id) + "_"  + str(uid_suffix)
+            target_uid = box.Class + "_" + str(uid_suffix)
           target_uids.append(target_uid)
           bounding_box_3d_msg = None
           if self.selected_target == "All" or self.selected_target == target_uid:
@@ -585,13 +609,15 @@ class NepiAiTargetingApp(object):
               theta_rad = theta_deg * math.pi/180 #  Vert Angle 0 - PI from top
               phi_deg =  (target_horz_angle_deg) # Horz Angle 0 - 360 from X axis counter clockwise
               phi_rad = phi_deg * math.pi/180 # Horz Angle 0 - 2 PI from from X axis counter clockwise
-              #rospy.logwarn([theta_deg,phi_deg])
+
               bbc.x = target_range_m * math.sin(theta_rad) * math.cos(phi_rad)
-              bbc.y = - target_range_m * math.cos(theta_rad) * math.sin(phi_rad)
+              bbc.y = target_range_m * math.sin(theta_rad) * math.sin(phi_rad)
               bbc.z = target_range_m * math.cos(theta_rad)
-              bounding_box_3d_msg.box_center_m.x = bbc.x - target_depth / 2
+              #rospy.logwarn([target_range_m,theta_deg,phi_deg,bbc.x, bbc.y,bbc.z])
+              bounding_box_3d_msg.box_center_m.x = bbc.x + target_depth / 2
               bounding_box_3d_msg.box_center_m.y = bbc.y
               bounding_box_3d_msg.box_center_m.z = bbc.z 
+
               # Calculate the Box Extent
               bbe = Vector3()  
               mpp_vert_at_range = 2 * target_range_m * math.sin(image_fov_vert/2 * math.pi/180) / self.img_height
@@ -763,10 +789,12 @@ class NepiAiTargetingApp(object):
             bb3d = targeting_box_3d_list[i]
         #rospy.logwarn(str(bb3d))
         if bb3d != None:
-          rospy.logwarn("Selected target 3d bounding box: " + str(bb3d))
+          #rospy.logwarn("Selected target 3d bounding box: " + str(bb3d))
           o3d_pc = nepi_pc.rospc_to_o3dpc(pointcloud2_msg, remove_nans=True)
+          cap = rospy.get_param('~pc_clip_adjust',self.init_pc_clip_adjust)
+          ca = float(cap)/100
           bounding_box_center = [bb3d.box_center_m.x,bb3d.box_center_m.y,bb3d.box_center_m.z]
-          bounding_box_extent = [bb3d.box_extent_xyz_m.x,bb3d.box_extent_xyz_m.y,bb3d.box_extent_xyz_m.z]
+          bounding_box_extent = [ca*bb3d.box_extent_xyz_m.x,ca*bb3d.box_extent_xyz_m.y,ca*bb3d.box_extent_xyz_m.z]
           bounding_box_rotation = [bb3d.box_rotation_rpy_deg.x,bb3d.box_rotation_rpy_deg.y,bb3d.box_rotation_rpy_deg.z]
           o3d_pc = nepi_pc.clip_bounding_box(o3d_pc,bounding_box_center,bounding_box_extent,bounding_box_rotation)
           ros_pc = nepi_pc.o3dpc_to_rospc(o3d_pc)
@@ -787,7 +815,9 @@ class NepiAiTargetingApp(object):
     status_msg.classifier_state = self.current_classifier_state
 
     status_msg.image_topic = self.current_image_topic
+    status_msg.has_depth_map = self.has_depth_map
     status_msg.depth_map_topic = self.depth_map_topic
+    status_msg.has_pointcloud = self.has_pointcloud
     status_msg.pointcloud_topic = self.pointcloud_topic
 
     status_msg.available_classes_list = str(self.current_classifier_classes)
@@ -817,7 +847,8 @@ class NepiAiTargetingApp(object):
     status_msg.image_fov_vert_degs = rospy.get_param('~image_fov_vert',  self.init_image_fov_vert)
     status_msg.image_fov_horz_degs = rospy.get_param('~image_fov_horz', self.init_image_fov_horz)
 
-    status_msg.target_box_reduction_percent = rospy.get_param('~target_box_reduction',  self.init_target_box_reduction)
+    status_msg.target_box_adjust_percent = rospy.get_param('~target_box_adjust',  self.init_target_box_adjust)
+    status_msg.pc_clip_adjust_percent = rospy.get_param('~pc_clip_adjust',  self.init_pc_clip_adjust)
     status_msg.default_target_depth_m = rospy.get_param('~default_target_depth',  self.init_default_target_depth)
     status_msg.target_min_points = rospy.get_param('~target_min_points', self.init_target_min_points)
     status_msg.target_age_filter = rospy.get_param('~target_age_filter', self.init_target_age_filter)
