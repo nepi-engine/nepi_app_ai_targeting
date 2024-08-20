@@ -36,7 +36,7 @@ from cv_bridge import CvBridge
 from nepi_ros_interfaces.msg import ClassifierSelection,  \
                                     BoundingBox, BoundingBoxes, BoundingBox3D, BoundingBoxes3D, \
                                     ObjectCount, ClassifierSelection, \
-                                    AiTargetingStatus, AiTargetingAddClass, \
+                                    AiTargetingStatus, \
                                     StringArray, TargetLocalization, TargetLocalizations
 from nepi_ros_interfaces.srv import ImageClassifierStatusQuery, ImageClassifierStatusQueryRequest
 
