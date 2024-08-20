@@ -328,7 +328,7 @@ class NepiAiTargetingApp(object):
 
     # App Specific Subscribers
     
-    enable_targeting_sub = rospy.Subscriber('~targeting_enabled', Bool, self.addAllClassesCb, queue_size = 10)
+    enable_targeting_sub = rospy.Subscriber('~targeting_enabled', Bool, self.enableTargetingCb, queue_size = 10)
     add_all_sub = rospy.Subscriber('~add_all_target_classes', Empty, self.addAllClassesCb, queue_size = 10)
     remove_all_sub = rospy.Subscriber('~remove_all_target_classes', Empty, self.removeAllClassesCb, queue_size = 10)
     add_class_sub = rospy.Subscriber('~add_target_class', String, self.addClassCb, queue_size = 10)
