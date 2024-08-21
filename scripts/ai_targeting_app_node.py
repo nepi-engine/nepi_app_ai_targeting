@@ -23,6 +23,9 @@ import numpy as np
 import cv2
 import copy
 import math
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 from nepi_edge_sdk_base import nepi_ros
 from nepi_edge_sdk_base import nepi_pc 
@@ -55,10 +58,9 @@ from nepi_edge_sdk_base.save_cfg_if import SaveCfgIF
 class NepiAiTargetingApp(object):
 
   #Set Initial Values
-  FACTORY_TARGETING_ENBABLED=True
   FACTORY_FOV_VERT_DEG=70 # Camera Vertical Field of View (FOV)
   FACTORY_FOV_HORZ_DEG=110 # Camera Horizontal Field of View (FOV)
-  FACTORY_TARGET_BOX_ADJUST_PERCENT=50 # percent ajustment on detection box around center to use for range calc
+  FACTORY_TARGET_BOX_ADJUST_PERCENT=80 # percent ajustment on detection box around center to use for range calc
   FACTORY_POINTCLOUD_ADJUST_PERCENT=200 # percent ajustment on detection box around center to use for pointcloud clipping
   FACTORY_TARGET_DEPTH_METERS=0.5 # Sets the depth filter around mean depth to use for range calc
   FACTORY_TARGET_MIN_POINTS=10 # Sets the minimum number of valid points to consider for a valid range
@@ -76,6 +78,8 @@ class NepiAiTargetingApp(object):
                                     'last_detection_timestamp': rospy.Duration(0)                              
                                     }
 
+
+  targeting_running = False
   data_products = ["detection_boxes","detection_image","targeting_boxes_2d","targeting_boxes_3d","targeting_localizations","targeting_image","targeting_pointcloud"]
   
   current_classifier = "None"
@@ -97,6 +101,7 @@ class NepiAiTargetingApp(object):
 
   detect_boxes_msg = None
   targeting_box_3d_list = None
+  class_color_list = []
 
   last_targeting_enable = False
   last_image_topic = "None"
@@ -123,7 +128,6 @@ class NepiAiTargetingApp(object):
     self.resetApp()
 
   def resetApp(self):
-    rospy.set_param('~targeting_enabled', self.FACTORY_TARGETING_ENBABLED)
     rospy.set_param('~last_classifier', "")
     rospy.set_param('~selected_classes_dict', dict())
     rospy.set_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
@@ -151,7 +155,6 @@ class NepiAiTargetingApp(object):
 
   def initParamServerValues(self,do_updates = True):
       rospy.loginfo("AI_TRG_APP: Setting init values to param values")
-      self.init_enable_targeting = rospy.get_param('~targeting_enabled', self.FACTORY_TARGETING_ENBABLED)
       self.init_last_classifier = rospy.get_param("~last_classifier", "")
       self.init_selected_classes_dict = rospy.get_param('~selected_classes_dict', dict())
       self.init_image_fov_vert = rospy.get_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
@@ -164,7 +167,6 @@ class NepiAiTargetingApp(object):
       self.resetParamServer(do_updates)
 
   def resetParamServer(self,do_updates = True):
-      rospy.set_param('~targeting_enabled', self.init_enable_targeting)
       rospy.set_param('~last_classiier', self.init_last_classifier)
       rospy.set_param('~selected_classes_dict', self.init_selected_classes_dict)
       rospy.set_param('~image_fov_vert',  self.init_image_fov_vert)
@@ -197,11 +199,6 @@ class NepiAiTargetingApp(object):
 
   ###################
   ## AI App Callbacks
-
-  def enableTargetingCb(self,msg):
-    ##rospy.loginfo(msg)
-    rospy.set_param('~targeting_enabled', msg.data)
-    self.publish_status()
 
   def addAllClassesCb(self,msg):
     ##rospy.loginfo(msg)
@@ -328,7 +325,6 @@ class NepiAiTargetingApp(object):
 
     # App Specific Subscribers
     
-    enable_targeting_sub = rospy.Subscriber('~targeting_enabled', Bool, self.enableTargetingCb, queue_size = 10)
     add_all_sub = rospy.Subscriber('~add_all_target_classes', Empty, self.addAllClassesCb, queue_size = 10)
     remove_all_sub = rospy.Subscriber('~remove_all_target_classes', Empty, self.removeAllClassesCb, queue_size = 10)
     add_class_sub = rospy.Subscriber('~add_target_class', String, self.addClassCb, queue_size = 10)
@@ -343,6 +339,7 @@ class NepiAiTargetingApp(object):
     age_filter_sub = rospy.Subscriber("~set_age_filter", Float32, self.setAgeFilterCb, queue_size = 10)
 
     # Start an AI manager status monitoring thread
+    self.SOURCE_IMAGE_TOPIC = NEPI_BASE_NAMESPACE + "ai_detector_mgr/source_image"
     AI_MGR_STATUS_SERVICE_NAME = NEPI_BASE_NAMESPACE + "ai_detector_mgr/img_classifier_status_query"
     self.get_ai_mgr_status_service = rospy.ServiceProxy(AI_MGR_STATUS_SERVICE_NAME, ImageClassifierStatusQuery)
     time.sleep(1)
@@ -383,10 +380,19 @@ class NepiAiTargetingApp(object):
     self.current_classifier_state = ai_mgr_status_response.classifier_state
     classes_string = ai_mgr_status_response.selected_classifier_classes
     self.current_classifier_classes = nepi_ros.parse_string_list_msg_data(classes_string)
+    cmap = plt.get_cmap('viridis')
+    color_list = cmap(np.linspace(0, 1, len(self.current_classifier_classes))).tolist()
+    rgb_list = []
+    for color in color_list:
+      rgb = []
+      for item in color:
+        rgb.append(int(item*255))
+      rgb_list.append(rgb)
+    self.class_color_list = rgb_list
     #classes_str = str(self.current_classifier_classes)
     #rospy.logwarn("AI_TRG_APP: got ai manager status: " + classes_str)
     self.current_image_topic = ai_mgr_status_response.selected_img_topic
-
+  
     selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
     last_classifier = rospy.get_param('~last_classiier', self.init_last_classifier)
     if last_classifier != self.current_classifier and self.current_classifier != "None":
@@ -397,9 +403,9 @@ class NepiAiTargetingApp(object):
     rospy.set_param('~selected_classes_dict', selected_classes_dict)
     rospy.set_param('~last_classiier', self.current_classifier)
 
-    # Check for targeting enabled
-    targeting_enabled = rospy.get_param('~targeting_enabled', self.init_enable_targeting)
-    if targeting_enabled == True:
+    # Check for running classifier
+    classifier_running = self.current_classifier_state == "Running"
+    if classifier_running:
       if (self.last_image_topic != self.current_image_topic and self.current_image_topic != "None") or (self.image_sub == None and self.current_image_topic != "None"):
         image_topic = nepi_ros.find_topic(self.current_image_topic)
         #rospy.logwarn(depth_map_topic)
@@ -410,11 +416,14 @@ class NepiAiTargetingApp(object):
           if self.image_pub == None:
             self.image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1)
           time.sleep(1)
-          self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 10)
+          self.image_sub = rospy.Subscriber(self.SOURCE_IMAGE_TOPIC, Image, self.targetingImageCb, queue_size = 1)
+          #self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 10)
           self.current_image_topic = image_topic
+          self.targeting_running = True
           update_status = True
         self.last_image_topic = self.current_image_topic
-
+        
+        # Look for Depth Map
         depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
         depth_map_topic = nepi_ros.find_topic(depth_map_topic)
         self.depth_map_topic = depth_map_topic
@@ -444,11 +453,7 @@ class NepiAiTargetingApp(object):
             update_status = True
 
     else:  # Turn off targeting subscribers and reset last image topic
-      if self.image_sub != None:
-        self.image_sub.unregister()
-        self.current_image_topic = "None"
-        self.current_image_header = Header()
-        self.last_image_topic = "None"
+      self.targeting_running = False
       if self.image_sub != None:
         self.image_sub.unregister()
         self.image_sub = None
@@ -463,8 +468,9 @@ class NepiAiTargetingApp(object):
         self.has_pointcloud = False
       if self.pointcloud_pub != None:
         self.pointcloud_pub.unregister()
-        
+      update_status = True
       time.sleep(1)
+
     if update_status == True:
       self.publish_status()
 
@@ -527,8 +533,8 @@ class NepiAiTargetingApp(object):
           # Get target label
           target_label=box.Class
           # reduce target box based on user settings
-          box_reduction_y_pix=int(float((box.ymax - box.ymin))*float(target_box_adjust_percent )/100/2)
-          box_reduction_x_pix=int(float((box.xmax - box.xmin))*float(target_box_adjust_percent )/100/2)
+          box_reduction_y_pix=int(float((box.ymax - box.ymin))*float(target_box_adjust_percent )/100)
+          box_reduction_x_pix=int(float((box.xmax - box.xmin))*float(target_box_adjust_percent )/100)
           ymin_adj=int(box.ymin + box_reduction_y_pix)
           ymax_adj=int(box.ymax - box_reduction_y_pix)
           xmin_adj=box.xmin + box_reduction_x_pix
@@ -644,15 +650,27 @@ class NepiAiTargetingApp(object):
           # Overlay adjusted detection boxes on image 
           start_point = (xmin_adj, ymin_adj)
           end_point = (xmax_adj, ymax_adj)
-          cv2.rectangle(cv2_img, start_point, end_point, color=(255,0,0), thickness=2)
+          class_name = box.Class
+          class_color = (255,0,0)
+          if class_name in self.current_classifier_classes:
+            class_ind = self.current_classifier_classes.index(class_name)
+            if class_ind < len(self.class_color_list):
+              class_color = tuple(self.class_color_list[class_ind])
+          line_thickness = 2
+          cv2.rectangle(cv2_img, start_point, end_point, color=class_color, thickness=line_thickness)
           # Overlay text data on OpenCV image
           font                   = cv2.FONT_HERSHEY_DUPLEX
-          fontScale, thickness  = self.optimal_font_dims(cv2_img,font_scale = 1.5e-3, thickness_scale = 2e-3)
-          fontColor              = (0, 255, 0)
-          lineType               = 1
+          fontScale, thickness  = self.optimal_font_dims(cv2_img,font_scale = 1.2e-3, thickness_scale = 1.5e-3)
+          fontColor = (0, 255, 0)
+          lineType = 1
+          text_size = cv2.getTextSize("Text", 
+            font, 
+            fontScale,
+            thickness)
+          line_height = text_size[1] * 3
         # Overlay Label
           text2overlay=target_uid
-          bottomLeftCornerOfText = (int(object_loc_x_pix),int(object_loc_y_pix))
+          bottomLeftCornerOfText = (xmax_adj,ymin_adj + line_thickness * 2 + line_height)
           cv2.putText(cv2_img,text2overlay, 
             bottomLeftCornerOfText, 
             font, 
@@ -660,13 +678,14 @@ class NepiAiTargetingApp(object):
             fontColor,
             thickness,
             lineType)
+          
           # Overlay Data
+          #rospy.logwarn(line_height)
           if target_range_m == -999:
-            t_range_m = np.nan
+            text2overlay="#," + "%.f" % target_horz_angle_deg + "d," + "%.f" % target_vert_angle_deg + "d"
           else:
-            t_range_m = target_range_m
-          text2overlay="%.1f" % t_range_m + "m," + "%.f" % target_horz_angle_deg + "d," + "%.f" % target_vert_angle_deg + "d"
-          bottomLeftCornerOfText = (int(object_loc_x_pix),int(object_loc_y_pix)+15)
+            text2overlay="%.1f" % target_range_m + "m," + "%.f" % target_horz_angle_deg + "d," + "%.f" % target_vert_angle_deg + "d"
+          bottomLeftCornerOfText = (xmax_adj,ymin_adj + line_thickness * 2 + line_height * 2)
           cv2.putText(cv2_img,text2overlay, 
             bottomLeftCornerOfText, 
             font, 
@@ -809,7 +828,7 @@ class NepiAiTargetingApp(object):
   def publish_status(self):
     status_msg = AiTargetingStatus()
 
-    status_msg.targeting_enabled = rospy.get_param('~targeting_enabled', self.init_enable_targeting)
+    status_msg.targeting_running = self.targeting_running
 
     status_msg.classifier_name = self.current_classifier
     status_msg.classifier_state = self.current_classifier_state
