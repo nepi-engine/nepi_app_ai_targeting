@@ -11,7 +11,7 @@
 
 import os
 # ROS namespace setup
-NEPI_BASE_NAMESPACE = '/nepi/s2x/'
+#NEPI_BASE_NAMESPACE = '/nepi/s2x/'
 #os.environ["ROS_NAMESPACE"] = NEPI_BASE_NAMESPACE[0:-1] # remove to run as automation script
 import rospy
 
@@ -46,8 +46,11 @@ from nepi_ros_interfaces.srv import ImageClassifierStatusQuery, ImageClassifierS
 from nepi_edge_sdk_base.save_data_if import SaveDataIF
 from nepi_edge_sdk_base.save_cfg_if import SaveCfgIF
 
+# Do this at the end
+#from scipy.signal import find_peaks
 
 
+NEPI_BASE_NAMESPACE = nepi_ros.get_base_namespace()
 
 #########################################
 
@@ -72,11 +75,14 @@ class NepiAiTargetingApp(object):
   NONE_CLASSES_DICT["None"] = {'depth': FACTORY_TARGET_DEPTH_METERS}
 
   EMPTY_TARGET_DICT = dict()
-  EMPTY_TARGET_DICT["None"] = {'class': 'None', 
-                                    'last_center_px': [0,0],
-                                    'last_velocity_pxps': [0,0],
-                                    'last_center_m': [0,0,0],
-                                    'last_velocity_mps': [0,0,0],
+  EMPTY_TARGET_DICT["None"] = {     'class_name': 'None', 
+                                    'target_uid': 'None',
+                                    'bounding_box': [0,0,0,0],
+                                    'range_bearings': [0,0,0],
+                                    'center_px': [0,0],
+                                    'velocity_pxps': [0,0],
+                                    'enter_m': [0,0,0],
+                                    'velocity_mps': [0,0,0],
                                     'last_detection_timestamp': rospy.Duration(0)                              
                                     }
 
@@ -110,7 +116,7 @@ class NepiAiTargetingApp(object):
   
   selected_classes_dict = dict()
   current_targets_dict = dict()
-  last_targets_dict = dict()
+  active_targets_dict = dict()
   lost_targets_dict = dict()
   selected_target = "All"
 
@@ -145,7 +151,7 @@ class NepiAiTargetingApp(object):
     self.lost_targets_dict = dict()
     self.publish_status()
 
-  def saveConfigCb(self, msg):  # Just update class init values. Saving done by Config IF system
+  def saveConfigCb(self, msg):  # Just update Class init values. Saving done by Config IF system
     pass # Left empty for sim, Should update from param server
 
   def setCurrentAsDefault(self):
@@ -354,11 +360,11 @@ class NepiAiTargetingApp(object):
     select_target_sub = rospy.Subscriber('~select_target', String, self.selectTargetCb, queue_size = 10)
     vert_fov_sub = rospy.Subscriber("~set_image_fov_vert", Float32, self.setVertFovCb, queue_size = 10)
     horz_fov_sub = rospy.Subscriber("~set_image_fov_horz", Float32, self.setHorzFovCb, queue_size = 10)
-    box_reduction_sub = rospy.Subscriber("~set_box_adjust_percent", Int32, self.setBoxAdjustCb, queue_size = 10)
+    box_adjustment_sub = rospy.Subscriber("~set_box_adjust_percent", Int32, self.setBoxAdjustCb, queue_size = 10)
     pc_increase_sub = rospy.Subscriber("~set_pc_clip_adjust_percent", Int32, self.setPcAdjustCb, queue_size = 10)
     default_target_depth_sub = rospy.Subscriber("~set_default_target_detpth", Float32, self.setDefaultTargetDepthCb, queue_size = 10)
     target_min_points_sub = rospy.Subscriber("~set_target_min_points", Int32, self.setTargetMinPointsCb, queue_size = 10)
-    target_min_px_ratio_sub = rospy.Subscriber("~set_target_min_px_ratio", Int32, self.setTargetMinPxRatioCb, queue_size = 10)
+    target_min_px_ratio_sub = rospy.Subscriber("~set_target_min_px_ratio", Float32, self.setTargetMinPxRatioCb, queue_size = 10)
     target_min_dist_m_sub = rospy.Subscriber("~set_target_min_dist_meters", Float32, self.setTargetMinDistMCb, queue_size = 10)
     age_filter_sub = rospy.Subscriber("~set_age_filter", Float32, self.setAgeFilterCb, queue_size = 10)
 
@@ -382,6 +388,7 @@ class NepiAiTargetingApp(object):
     self.targeting_boxes_2d_pub = rospy.Publisher("~targeting_boxes_2d", BoundingBoxes, queue_size=1)
     self.targeting_boxes_3d_pub = rospy.Publisher("~targeting_boxes_3d", BoundingBoxes3D, queue_size=1)
     self.target_localizations_pub = rospy.Publisher("~targeting_localizations", TargetLocalizations, queue_size=1)
+    self.image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1)
     time.sleep(1)
     ## Initiation Complete
     rospy.loginfo("AI_TRG_APP: Initialization Complete")
@@ -434,14 +441,8 @@ class NepiAiTargetingApp(object):
         image_topic = nepi_ros.find_topic(self.current_image_topic)
         #rospy.logwarn(depth_map_topic)
         if image_topic != "":
-          if self.image_sub != None:
-            self.image_sub.unregister()
-            self.image_sub = None
-          if self.image_pub == None:
-            self.image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1)
-          time.sleep(1)
-          self.image_sub = rospy.Subscriber(self.SOURCE_IMAGE_TOPIC, Image, self.targetingImageCb, queue_size = 1)
-          #self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 10)
+          #self.image_sub = rospy.Subscriber(self.SOURCE_IMAGE_TOPIC, Image, self.targetingImageCb, queue_size = 1)
+          self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 10)
           self.current_image_topic = image_topic
           self.targeting_running = True
           update_status = True
@@ -478,9 +479,6 @@ class NepiAiTargetingApp(object):
 
     else:  # Turn off targeting subscribers and reset last image topic
       self.targeting_running = False
-      if self.image_sub != None:
-        self.image_sub.unregister()
-        self.image_sub = None
       if self.depth_map_sub != None:
         self.depth_map_sub.unregister()
         self.depth_map_topic = "None"
@@ -507,6 +505,8 @@ class NepiAiTargetingApp(object):
       #print("No objects detected")
       self.detect_boxes_msg = None
       self.targeting_box_3d_list = None
+      self.current_targets_dict = dict()
+
 
 
   ### If object(s) detected, save bounding box info to global
@@ -514,295 +514,310 @@ class NepiAiTargetingApp(object):
     ros_timestamp = bounding_boxes_msg.header.stamp
     self.detect_boxes_msg=bounding_boxes_msg
     self.save_data2file('ai_detector_mgr','detection_boxes',bounding_boxes_msg,ros_timestamp)
-
-  def detectionImageCb(self,img_msg):
-    ros_timestamp = img_msg.header.stamp
-    # Convert ROS image to OpenCV for editing
-    cv2_bridge = CvBridge()
-    cv2_img = cv2_bridge.imgmsg_to_cv2(img_msg, "bgr8")
-    self.save_img2file('ai_detector_mgr','detection_image',cv2_img,ros_timestamp)    
-    #self.detection_image_pub.publish(img_msg)
-
-  def targetingImageCb(self,img_msg):  
-    self.current_image_header = img_msg.header
-    ros_timestamp = img_msg.header.stamp
-    now_timestamp = rospy.Time.now()
-    # Convert ROS image to OpenCV for editing
-    self.img_height = img_msg.height
-    self.img_width = img_msg.width
-    cv2_bridge = CvBridge()
-    cv2_img = cv2_bridge.imgmsg_to_cv2(img_msg, "bgr8")
-    selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
-    # Iterate over all of the objects and calculate range and bearing data
-    image_fov_vert = rospy.get_param('~image_fov_vert',  self.init_image_fov_vert)
-    image_fov_horz = rospy.get_param('~image_fov_horz', self.init_image_fov_horz)
-    target_box_adjust_percent = rospy.get_param('~target_box_adjust',  self.init_target_box_adjust)
-    target_min_points = rospy.get_param('~target_min_points',  self.init_target_min_points)    
-    target_min_px_ratio = rospy.get_param('~target_min_px_ratio', self.init_target_min_px_ratio)
-    target_min_dist_m = rospy.get_param('~target_min_dist_m', self.init_target_min_dist_m)
+    active_targets_dict = copy.deepcopy(self.active_targets_dict)
+    lost_targets_dict = copy.deepcopy(self.lost_targets_dict)
+    current_targets_dict = dict()
     bbs2d = []
     tls = []
     bbs3d = []
-    detect_boxes_msg = copy.deepcopy(self.detect_boxes_msg)
-    targeting_boxes_msg = copy.deepcopy(detect_boxes_msg)
-    target_uids = []
-    if detect_boxes_msg is not None:
-      targeting_boxes_msg.bounding_boxes = [] 
-      detect_header = detect_boxes_msg.header
-      ros_timestamp = detect_header.stamp
-      detect_img_header = detect_boxes_msg.image_header
-      detect_img_topic = detect_boxes_msg.image_topic
-      box_class_list = []
-      box_area_list = []
-      box_mmx_list = []
-      box_mmy_list = []
-      box_center_list = []
-      for i, box in enumerate(detect_boxes_msg.bounding_boxes):
-        box_class_list.append(box.Class)
-        box_area=(box.xmax-box.xmin)*(box.ymax-box.ymin)
-        box_area_list.append(box_area)
-        box_mmx_list.append([box.xmin,box.xmax])
-        box_mmy_list.append([box.ymin,box.ymax])
-        box_y = box.ymin + (box.ymax - box.ymin)
-        box_x = box.xmin + (box.xmax - box.xmin)
-        box_center = [box_y,box_x]
-        box_center_list.append(box_center)
-      for i, box in enumerate(detect_boxes_msg.bounding_boxes):
-        if box.Class in selected_classes_dict.keys():
-          self.seq += 1 
-          target_depth_m = selected_classes_dict[box.Class]['depth']
-          # Get target label
-          target_label=box.Class
-          # reduce target box based on user settings
-          box_reduction_y_pix=int(float((box.ymax - box.ymin))*float(target_box_adjust_percent )/100)
-          box_reduction_x_pix=int(float((box.xmax - box.xmin))*float(target_box_adjust_percent )/100)
-          ymin_adj=int(box.ymin + box_reduction_y_pix)
-          ymax_adj=int(box.ymax - box_reduction_y_pix)
-          xmin_adj=box.xmin + box_reduction_x_pix
-          xmax_adj=box.xmax - box_reduction_x_pix
-          # Calculate target range
-          np_depth_array_m = copy.deepcopy(self.np_depth_array_m)
-          if np_depth_array_m is not None and self.depth_map_topic != "None":
-            depth_map_header = copy.deepcopy(self.depth_map_header)
-            # Get target range from cropped and filtered depth data
-            depth_box_adj= np_depth_array_m[ymin_adj:ymax_adj,xmin_adj:xmax_adj]
-            depth_mean_val=np.mean(depth_box_adj)
-            depth_array=depth_box_adj.flatten()
-            min_filter=depth_mean_val-target_depth_m/2
-            max_filter=depth_mean_val+target_depth_m/2
-            depth_array=depth_array[depth_array > min_filter]
-            depth_array=depth_array[depth_array < max_filter]
-            depth_len=len(depth_array)
-            if depth_len > target_min_points:
-              target_range_m=np.mean(depth_box_adj)
-            else:
-              target_range_m=float(-999) # NEPI standard unset value
-          else:
-            target_range_m=float(-999)  # NEPI standard unset value
-          # Calculate target bearings
-          object_loc_y_pix = float(box.ymin + ((box.ymax - box.ymin))  / 2) 
-          object_loc_x_pix = float(box.xmin + ((box.xmax - box.xmin))  / 2)
-          object_loc_y_ratio_from_center = float(object_loc_y_pix - self.img_height/2) / float(self.img_height/2)
-          object_loc_x_ratio_from_center = float(object_loc_x_pix - self.img_width/2) / float(self.img_width/2)
-          target_vert_angle_deg = (object_loc_y_ratio_from_center * float(image_fov_vert/2))
-          target_horz_angle_deg = - (object_loc_x_ratio_from_center * float(image_fov_horz/2))
-          ### Print the range and bearings for each detected object
-    ##      print(target_label)
-    ##      print(str(depth_box_adj.shape) + " detection box size")
-    ##      print(str(depth_len) + " valid depth readings")
-    ##      print("%.2f" % target_range_m + "m : " + "%.2f" % target_horz_angle_deg + "d : " + "%.2f" % target_vert_angle_deg + "d : ")
-    ##      print("")
+    if self.img_height != 0 and self.img_width != 0:
+        # Iterate over all of the objects and calculate range and bearing data
+        selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
+        image_fov_vert = rospy.get_param('~image_fov_vert',  self.init_image_fov_vert)
+        image_fov_horz = rospy.get_param('~image_fov_horz', self.init_image_fov_horz)
+        target_box_adjust_percent = rospy.get_param('~target_box_adjust',  self.init_target_box_adjust)
+        target_min_points = rospy.get_param('~target_min_points',  self.init_target_min_points)    
+        target_min_px_ratio = rospy.get_param('~target_min_px_ratio', self.init_target_min_px_ratio)
+        target_min_dist_m = rospy.get_param('~target_min_dist_m', self.init_target_min_dist_m)
+        detect_boxes_msg = copy.deepcopy(self.detect_boxes_msg)
+        targeting_boxes_msg = copy.deepcopy(detect_boxes_msg)
+        target_uids = []
+        if detect_boxes_msg is not None:
+            targeting_boxes_msg.bounding_boxes = [] 
+            detect_header = detect_boxes_msg.header
+            ros_timestamp = detect_header.stamp
+            detect_img_header = detect_boxes_msg.image_header
+            detect_img_topic = detect_boxes_msg.image_topic
+            box_class_list = []
+            box_area_list = []
+            box_mmx_list = []
+            box_mmy_list = []
+            box_center_list = []
+            for i, box in enumerate(detect_boxes_msg.bounding_boxes):
+                box_class_list.append(box.Class)
+                box_area=(box.xmax-box.xmin)*(box.ymax-box.ymin)
+                box_area_list.append(box_area)
+                box_mmx_list.append([box.xmin,box.xmax])
+                box_mmy_list.append([box.ymin,box.ymax])
+                box_y = box.ymin + (box.ymax - box.ymin)
+                box_x = box.xmin + (box.xmax - box.xmin)
+                box_center = [box_y,box_x]
+                box_center_list.append(box_center)
+            for i, box in enumerate(detect_boxes_msg.bounding_boxes):
+                if box.Class in selected_classes_dict.keys():
+                    self.seq += 1 
+                    target_depth_m = selected_classes_dict[box.Class]['depth']
+                    # Get target label
+                    target_label=box.Class
+                    # reduce target box based on user settings
+                    y_len = (box.ymax - box.ymin)
+                    x_len = (box.xmax - box.xmin)
+                    adj_ratio = float(target_box_adjust_percent )/100.0
+                    if target_box_adjust_percent == 100: 
+                        delta_y = 0
+                        delta_x = 0
+                    else:
+                        adj = float(target_box_adjust_percent )/100.0
+                        delta_y = int(y_len / 2 * (adj_ratio-1))
+                        delta_x = int(x_len / 2 * (adj_ratio-1))
+                    ymin_adj=box.ymin - delta_y
+                    ymax_adj=box.ymax + delta_y
+                    xmin_adj=box.xmin - delta_x
+                    xmax_adj=box.xmax + delta_x
+                    #rospy.logwarn([ymin_adj,ymax_adj,xmin_adj,xmax_adj])
+                    # Calculate target range
+                    target_range_m=float(-999)  # NEPI standard unset value
+                    target_depth = selected_classes_dict[box.Class]['depth']
+                    np_depth_array_m = copy.deepcopy(self.np_depth_array_m)
+                    if np_depth_array_m is not None and self.depth_map_topic != "None":
+                        depth_map_header = copy.deepcopy(self.depth_map_header)
+                        # Get target range from cropped and filtered depth data
+                        depth_box_adj= np_depth_array_m[ymin_adj:ymax_adj,xmin_adj:xmax_adj]
+                        depth_array=depth_box_adj.flatten()
+                        depth_array = depth_array[~np.isnan(depth_array)] # remove nan entries
+                        depth_array = depth_array[depth_array>0] # remove zero entries
+                        depth_val=np.mean(depth_array) # Initialize fallback value.  maybe updated
+                        
+                        # Try histogram calculation
+                        min_range = np.min(depth_array)
+                        max_range = np.max(depth_array)
+                        delta_range = max_range - min_range
+                        if delta_range > target_depth/2:
+                            bins_per_target = 10
+                            bin_step = target_depth / bins_per_target
+                            num_bins = int(delta_range / bin_step)
+                            # Get histogram
+                            hist, hbins = np.histogram(depth_array, bins = num_bins, range = (min_range,max_range))
+                            bins = hbins[1:] + (hbins[1:] - hbins[:-1]) / 2
+                            peak_dist = int(bins_per_target / 2)
+                            #max_hist_inds,ret_dict = find_peaks(hist, distance=peak_dist)
+                            #max_hist_inds = list(max_hist_inds)
+                            #max_hist_ind = max_hist_inds[0]
+                            max_hist_val = hist[0]
+                            max_hist_ind = 0
+                            for ih, val in enumerate(hist):
+                                if val > max_hist_val:
+                                    max_hist_val = val
+                                    max_hist_ind = ih
+                                elif val < max_hist_val:
+                                    break 
+                            #rospy.logwarn(max_hist_ind)
+                            hist_len = len(hist)
+                            bins_len = len(bins)
+                            # Hanning window on targets
+                            win_len = bins_per_target
+                            if hist_len > win_len:
+                                win_len_half = int(bins_per_target/2)
+                                win = np.hanning(win_len)
+                                han_win = np.zeros(hist_len)
+                                han_win[:win_len] = win
+                                win_center = int(win_len/2)
+                                win_roll = max_hist_ind - win_center
+                                front_pad = 0
+                                back_pad = -0
+                                if win_roll < 0 and max_hist_ind < win_len:
+                                    back_pad = win_len - max_hist_ind
+                                elif win_roll > 0 and max_hist_ind > (hist_len - win_len + 1):
+                                    front_pad = max_hist_ind - (hist_len - win_len + 1)             
+                                han_win = np.roll(han_win,win_roll)
+                                han_win[:front_pad] = 0
+                                han_win[back_pad:] = 0
+                                han_win_len = len(han_win)
+                                
+                                #rospy.logwarn([min_range,max_range])
+                                #rospy.logwarn(bins)
+                                #rospy.logwarn(han_win)
+                                if np.sum(han_win) > .1:
+                                    depth_val=np.average(bins,weights = han_win)
+                                
+
+
+                        min_filter=depth_val-target_depth_m/2
+                        max_filter=depth_val+target_depth_m/2
+                        depth_array=depth_array[depth_array > min_filter]
+                        depth_array=depth_array[depth_array < max_filter]
+                        depth_len=len(depth_array)
+                        #rospy.logwarn("")
+                        #rospy.logwarn(depth_len)
+                        if depth_len > target_min_points:
+                            target_range_m=depth_val
+                        else:
+                            target_range_m= -999
+                        #rospy.logwarn(target_range_m)
+                        
+                        # Calculate target bearings
+                    object_loc_y_pix = float(box.ymin + ((box.ymax - box.ymin))  / 2) 
+                    object_loc_x_pix = float(box.xmin + ((box.xmax - box.xmin))  / 2)
+                    object_loc_y_ratio_from_center = float(object_loc_y_pix - self.img_height/2) / float(self.img_height/2)
+                    object_loc_x_ratio_from_center = float(object_loc_x_pix - self.img_width/2) / float(self.img_width/2)
+                    target_vert_angle_deg = (object_loc_y_ratio_from_center * float(image_fov_vert/2))
+                    target_horz_angle_deg = - (object_loc_x_ratio_from_center * float(image_fov_horz/2))
+                    ### Print the range and bearings for each detected object
+                ##      print(target_label)
+                ##      print(str(depth_box_adj.shape) + " detection box size")
+                ##      print(str(depth_len) + " valid depth readings")
+                ##      print("%.2f" % target_range_m + "m : " + "%.2f" % target_horz_angle_deg + "d : " + "%.2f" % target_vert_angle_deg + "d : ")
+                ##      print("")
 
 
 
-          #### Filter targets based on center location and min_px_ratio
-          valid_2d_target = True
-          ref_px_len = math.sqrt(self.img_height**2 + self.img_width**2)
-          px_dist_list = []
-          px_mmx_list = []
-          px_mmy_list = []
-          px_area_list = []
-          for i2, box_class in enumerate(box_class_list):
-            if i2 != i and box.Class == box_class_list[i2]:
-              dif_y = box_center_list[i][0] - box_center_list[i2][0]
-              dif_x = box_center_list[i][1] - box_center_list[i2][1]
-              px_dist = math.sqrt(dif_x**2 + dif_y**2)
-              px_dist_list.append(px_dist)
-              px_mmx_list.append(box_mmx_list[i2])
-              px_mmy_list.append(box_mmy_list[i2])
-              px_area_list.append(box_area_list[i2])
-          for i3, dist in enumerate(px_dist_list):
-            if px_area_list[i3] > box_area_list[i]:
-              dist_ratio = dist/ref_px_len
-              if dist_ratio < target_min_px_ratio:
-                valid_2d_target = False 
-              if valid_2d_target:
-                box_x = box_center_list[i][0]
-                cent_in_x = box_x > box_mmx_list[i3][0] and box_x < box_mmx_list[i3][1]
-                box_y = box_center_list[i][1]
-                cent_in_y = box_y > box_mmy_list[i3][0] and box_y < box_mmy_list[i3][1]
-                if cent_in_x and cent_in_y:
-                  valid_2d_target = False
-            
-          if valid_2d_target:
-            #### NEED TO Calculate Unique IDs
-            uid_suffix = 0
-            target_uid = box.Class + "_" + str(uid_suffix)# Need to add unque id tracking
-            while target_uid in target_uids:
-              uid_suffix += 1
-              target_uid = box.Class + "_" + str(uid_suffix)
-            target_uids.append(target_uid)
-            bounding_box_3d_msg = None
-            if self.selected_target == "All" or self.selected_target == target_uid:
+                    #### Filter targets based on center location and min_px_ratio
+                    valid_2d_target = True
+                    ref_px_len = math.sqrt(self.img_height**2 + self.img_width**2)
+                    px_dist_list = []
+                    px_mmx_list = []
+                    px_mmy_list = []
+                    px_area_list = []
+                    for i2, box_class in enumerate(box_class_list):
+                        if i2 != i and box.Class == box_class_list[i2]:
+                            dif_y = box_center_list[i][0] - box_center_list[i2][0]
+                            dif_x = box_center_list[i][1] - box_center_list[i2][1]
+                            px_dist = math.sqrt(dif_x**2 + dif_y**2)
+                            px_dist_list.append(px_dist)
+                            px_mmx_list.append(box_mmx_list[i2])
+                            px_mmy_list.append(box_mmy_list[i2])
+                            px_area_list.append(box_area_list[i2])
+                    for i3, dist in enumerate(px_dist_list): # Check if target is valid
+                        if px_area_list[i3] > box_area_list[i]:
+                            dist_ratio = dist/ref_px_len
+                            if dist_ratio < target_min_px_ratio: # Check if target center is within a bigger box
+                                valid_2d_target = False 
+                            if valid_2d_target:
+                                box_x = box_center_list[i][0]
+                                cent_in_x = box_x > box_mmx_list[i3][0] and box_x < box_mmx_list[i3][1]
+                                box_y = box_center_list[i][1]
+                                cent_in_y = box_y > box_mmy_list[i3][0] and box_y < box_mmy_list[i3][1]
+                                if cent_in_x and cent_in_y: # Check if target center is within a bigger box
+                                    valid_2d_target = False
+                    if valid_2d_target:
+                        #### NEED TO Calculate Unique IDs
+                        uid_suffix = 0
+                        target_uid = box.Class + "_" + str(uid_suffix)# Need to add unque id tracking
+                        while target_uid in target_uids:
+                            uid_suffix += 1
+                            target_uid = box.Class + "_" + str(uid_suffix)
+                        target_uids.append(target_uid)
+                        bounding_box_3d_msg = None
+                        if self.selected_target == "All" or self.selected_target == target_uid:
+                            # Updated Bounding Box 2d
+                            bounding_box_msg = BoundingBox()
+                            bounding_box_msg.Class = box.Class
+                            bounding_box_msg.id = box.id
+                            bounding_box_msg.uid = target_uid
+                            bounding_box_msg.probability = box.probability
+                            bbs2d.append(bounding_box_msg)
 
-              # Updated Bounding Box 2d
-              bounding_box_msg = BoundingBox()
-              bounding_box_msg.Class = box.Class
-              bounding_box_msg.id = box.id
-              bounding_box_msg.uid = target_uid
-              bounding_box_msg.probability = box.probability
-              bbs2d.append(bounding_box_msg)
+                            # Create target_localizations
+                            target_data_msg=TargetLocalization()
+                            target_data_msg.Class = box.Class
+                            target_data_msg.id = box.id 
+                            target_data_msg.uid = target_uid
+                            target_data_msg.range_m=target_range_m
+                            target_data_msg.azimuth_deg=target_horz_angle_deg
+                            target_data_msg.elevation_deg=target_vert_angle_deg
+                            tls.append(target_data_msg)
 
-              # Create target_localizations
-              target_data_msg=TargetLocalization()
-              target_data_msg.Class = box.Class
-              target_data_msg.id = box.id 
-              target_data_msg.uid = target_uid
-              target_data_msg.range_m=target_range_m
-              target_data_msg.azimuth_deg=target_horz_angle_deg
-              target_data_msg.elevation_deg=target_vert_angle_deg
-              tls.append(target_data_msg)
+                            # Create Bounding Box 3d
+                            if target_range_m != -999:
+                                target_depth = selected_classes_dict[box.Class]['depth']
+                                # Calculate Bounding Box 3D
+                                bounding_box_3d_msg = BoundingBox3D()
+                                bounding_box_3d_msg.Class = box.Class
+                                bounding_box_3d_msg.id = box.id 
+                                bounding_box_3d_msg.uid = target_uid
+                                bounding_box_3d_msg.probability = box.probability
+                                # Calculate the Box Center
+                                # Ref www.stackoverflow.com/questions/30619901/calculate-3d-point-coordinates-using-horizontal-and-vertical-angles-and-slope-di
+                                bbc = Vector3()
+                                theta_deg = (target_vert_angle_deg + 90)  #  Vert Angle 0 - 180 from top
+                                theta_rad = theta_deg * math.pi/180 #  Vert Angle 0 - PI from top
+                                phi_deg =  (target_horz_angle_deg) # Horz Angle 0 - 360 from X axis counter clockwise
+                                phi_rad = phi_deg * math.pi/180 # Horz Angle 0 - 2 PI from from X axis counter clockwise
 
-              # Create Bounding Box 3d
-              if target_range_m != -999:
-                target_depth = selected_classes_dict[box.Class]['depth']
-                # Calculate Bounding Box 3D
-                bounding_box_3d_msg = BoundingBox3D()
-                bounding_box_3d_msg.Class = box.Class
-                bounding_box_3d_msg.id = box.id 
-                bounding_box_3d_msg.uid = target_uid
-                bounding_box_3d_msg.probability = box.probability
-                # Calculate the Box Center
-                # Ref www.stackoverflow.com/questions/30619901/calculate-3d-point-coordinates-using-horizontal-and-vertical-angles-and-slope-di
-                bbc = Vector3()
-                theta_deg = (target_vert_angle_deg + 90)  #  Vert Angle 0 - 180 from top
-                theta_rad = theta_deg * math.pi/180 #  Vert Angle 0 - PI from top
-                phi_deg =  (target_horz_angle_deg) # Horz Angle 0 - 360 from X axis counter clockwise
-                phi_rad = phi_deg * math.pi/180 # Horz Angle 0 - 2 PI from from X axis counter clockwise
+                                bbc.x = target_range_m * math.sin(theta_rad) * math.cos(phi_rad)
+                                bbc.y = target_range_m * math.sin(theta_rad) * math.sin(phi_rad)
+                                bbc.z = target_range_m * math.cos(theta_rad)
+                                #rospy.logwarn([target_range_m,theta_deg,phi_deg,bbc.x, bbc.y,bbc.z])
+                                bounding_box_3d_msg.box_center_m.x = bbc.x + target_depth / 2
+                                bounding_box_3d_msg.box_center_m.y = bbc.y
+                                bounding_box_3d_msg.box_center_m.z = bbc.z 
 
-                bbc.x = target_range_m * math.sin(theta_rad) * math.cos(phi_rad)
-                bbc.y = target_range_m * math.sin(theta_rad) * math.sin(phi_rad)
-                bbc.z = target_range_m * math.cos(theta_rad)
-                #rospy.logwarn([target_range_m,theta_deg,phi_deg,bbc.x, bbc.y,bbc.z])
-                bounding_box_3d_msg.box_center_m.x = bbc.x + target_depth / 2
-                bounding_box_3d_msg.box_center_m.y = bbc.y
-                bounding_box_3d_msg.box_center_m.z = bbc.z 
+                                # Calculate the Box Extent
+                                bbe = Vector3()  
+                                mpp_vert_at_range = 2 * target_range_m * math.sin(image_fov_vert/2 * math.pi/180) / self.img_height
+                                mpp_horz_at_range = 2* target_range_m * math.sin(image_fov_horz/2 * math.pi/180) / self.img_width
+                                mpp_at_range = (mpp_vert_at_range + mpp_horz_at_range) / 2  #  ToDo: More accurate calc
+                                bbe.x = target_depth
+                                bbe.y = mpp_at_range * (box.xmax-box.xmin)
+                                bbe.z = mpp_at_range * (box.ymax-box.ymin)
+                                bounding_box_3d_msg.box_extent_xyz_m.x = bbe.x
+                                bounding_box_3d_msg.box_extent_xyz_m.y = bbe.y
+                                bounding_box_3d_msg.box_extent_xyz_m.z = bbe.z
+                                # Target Rotation Unknown
+                                bbr = Vector3()
+                                bbr.x = 0
+                                bbr.y = 0
+                                bbr.z = 0
+                                bounding_box_3d_msg.box_rotation_rpy_deg.x = bbr.x
+                                bounding_box_3d_msg.box_rotation_rpy_deg.y = bbr.y
+                                bounding_box_3d_msg.box_rotation_rpy_deg.z = bbr.z
+                                # To Do Add Bounding Box 3D Data
+                                bbs3d.append(bounding_box_3d_msg)
 
-                # Calculate the Box Extent
-                bbe = Vector3()  
-                mpp_vert_at_range = 2 * target_range_m * math.sin(image_fov_vert/2 * math.pi/180) / self.img_height
-                mpp_horz_at_range = 2* target_range_m * math.sin(image_fov_horz/2 * math.pi/180) / self.img_width
-                mpp_at_range = (mpp_vert_at_range + mpp_horz_at_range) / 2  #  ToDo: More accurate calc
-                bbe.x = target_depth
-                bbe.y = mpp_at_range * (box.xmax-box.xmin)
-                bbe.z = mpp_at_range * (box.ymax-box.ymin)
-                bounding_box_3d_msg.box_extent_xyz_m.x = bbe.x
-                bounding_box_3d_msg.box_extent_xyz_m.y = bbe.y
-                bounding_box_3d_msg.box_extent_xyz_m.z = bbe.z
-                # Target Rotation Unknown
-                bbr = Vector3()
-                bbr.x = 0
-                bbr.y = 0
-                bbr.z = 0
-                bounding_box_3d_msg.box_rotation_rpy_deg.x = bbr.x
-                bounding_box_3d_msg.box_rotation_rpy_deg.y = bbr.y
-                bounding_box_3d_msg.box_rotation_rpy_deg.z = bbr.z
-                # To Do Add Bounding Box 3D Data
-                bbs3d.append(bounding_box_3d_msg)
-        
-            ###### Apply Image Overlays and Publish Targeting_Image ROS Message
-            # Overlay adjusted detection boxes on image 
-            start_point = (xmin_adj, ymin_adj)
-            end_point = (xmax_adj, ymax_adj)
-            class_name = box.Class
-            class_color = (255,0,0)
-            if class_name in self.current_classifier_classes:
-              class_ind = self.current_classifier_classes.index(class_name)
-              if class_ind < len(self.class_color_list):
-                class_color = tuple(self.class_color_list[class_ind])
-            line_thickness = 2
-            cv2.rectangle(cv2_img, start_point, end_point, color=class_color, thickness=line_thickness)
-            # Overlay text data on OpenCV image
-            font                   = cv2.FONT_HERSHEY_DUPLEX
-            fontScale, thickness  = self.optimal_font_dims(cv2_img,font_scale = 1.2e-3, thickness_scale = 1.5e-3)
-            fontColor = (0, 255, 0)
-            lineType = 1
-            text_size = cv2.getTextSize("Text", 
-              font, 
-              fontScale,
-              thickness)
-            line_height = text_size[1] * 3
-          # Overlay Label
-            text2overlay=target_uid
-            bottomLeftCornerOfText = (xmax_adj,ymin_adj + line_thickness * 2 + line_height)
-            cv2.putText(cv2_img,text2overlay, 
-              bottomLeftCornerOfText, 
-              font, 
-              fontScale,
-              fontColor,
-              thickness,
-              lineType)
-            
-            # Overlay Data
-            #rospy.logwarn(line_height)
-            if target_range_m == -999:
-              text2overlay="#," + "%.f" % target_horz_angle_deg + "d," + "%.f" % target_vert_angle_deg + "d"
-            else:
-              text2overlay="%.1f" % target_range_m + "m," + "%.f" % target_horz_angle_deg + "d," + "%.f" % target_vert_angle_deg + "d"
-            bottomLeftCornerOfText = (xmax_adj,ymin_adj + line_thickness * 2 + line_height * 2)
-            cv2.putText(cv2_img,text2overlay, 
-              bottomLeftCornerOfText, 
-              font, 
-              fontScale,
-              fontColor,
-              thickness,
-              lineType)
+                            # Update Current Targets List
+                            if bounding_box_3d_msg is not None:
+                                center_m = [bbc.x,bbc.y,bbc.z]
+                            else:
+                                center_m = [-999,-999,-999]
 
+                            current_targets_dict[target_uid] = {
+                                'class_name': box.Class, 
+                                'target_uid': target_uid,
+                                'bounding_box': [xmin_adj,xmax_adj,ymin_adj,ymax_adj],
+                                'range_bearings': [target_range_m , target_horz_angle_deg , target_vert_angle_deg],
+                                'center_px': [box.xmax-box.xmin,box.ymax-box.ymin],
+                                'velocity_pxps': [0,0],
+                                'center_m': center_m,
+                                'velocity_mps': [0,0,0],
+                                'last_detection_timestamp': ros_timestamp                              
+                                }
+                            active_targets_dict[target_uid] = current_targets_dict[target_uid]
 
-            # Update Current Targets List
-            if bounding_box_3d_msg is not None:
-              center_m = [bbc.x,bbc.y,bbc.z]
-            else:
-              center_m = [-999,-999,-999]
-            self.current_targets_dict[target_uid] = {'class': box.Class, 
-                            'last_center_px': [box.xmax-box.xmin,box.ymax-box.ymin],
-                            'last_velocity_pxps': [0,0],
-                            'last_center_m': center_m,
-                            'last_velocity_mps': [0,0,0],
-                            'last_detection_timestamp': ros_timestamp                              
-                            }
-
-
+    
     # Purge Current Targets List based on Age
     purge_list = []
     age_filter_sec = rospy.get_param('~target_age_filter', self.init_target_age_filter)
-    for target in self.current_targets_dict.keys():
-      last_timestamp = self.current_targets_dict[target]['last_detection_timestamp']
+    for target in active_targets_dict.keys():
+      last_timestamp = active_targets_dict[target]['last_detection_timestamp']
       #rospy.logwarn(target)
-      #rospy.logwarn(now_timestamp)
+      #rospy.logwarn(ros_timestamp)
       #rospy.logwarn(last_timestamp)
-      age = now_timestamp - last_timestamp
+      age = ros_timestamp - last_timestamp
       #rospy.logwarn("Target " + target + " age: " + str(age))
       if age > rospy.Duration(age_filter_sec):
         purge_list.append(target)
     #rospy.logwarn("Target Purge List: " + str(purge_list))
     for target in purge_list: 
-        self.lost_targets_dict[target] = self.current_targets_dict[target]
-        del self.current_targets_dict[target]
+        lost_targets_dict[target] = active_targets_dict[target]
+        del active_targets_dict[target]
 
-    if self.current_targets_dict.keys() != self.last_targets_dict.keys():
-      self.publish_status()
-    self.last_targets_dict = copy.deepcopy(self.current_targets_dict)
+     
+    if current_targets_dict.keys() != self.current_targets_dict.keys():
+        self.publish_status()
+    self.current_targets_dict = current_targets_dict
+    #rospy.logwarn(self.current_targets_dict)
+    self.active_targets_dict = active_targets_dict
+    self.lost_targets_dict = lost_targets_dict
     # Publish and Save 2D Bounding Boxes
     if len(bbs2d) > 0:
       detect_boxes_msg.bounding_boxes = bbs2d
@@ -842,15 +857,98 @@ class NepiAiTargetingApp(object):
       # Save Data if Time
       self.save_data2file('ai_targeting_app','targeting_boxes_3d',targeting_boxes_3d_msg,ros_timestamp)
 
+  def detectionImageCb(self,img_msg):
+    ros_timestamp = img_msg.header.stamp
+    # Convert ROS image to OpenCV for editing
+    cv2_bridge = CvBridge()
+    cv2_img = cv2_bridge.imgmsg_to_cv2(img_msg, "bgr8")
+    self.save_img2file('ai_detector_mgr','detection_image',cv2_img,ros_timestamp)    
+    #self.detection_image_pub.publish(img_msg)
 
-    #Convert OpenCV image to ROS image
-    img_out_msg = cv2_bridge.cv2_to_imgmsg(cv2_img,"bgr8")#desired_encoding='passthrough')
-    # Publish new image to ros
-    if not rospy.is_shutdown():
-      self.image_pub.publish(img_out_msg)
+  def targetingImageCb(self,img_msg): 
+    data_product = 'targeting_image'
+    self.img_height = img_msg.height
+    self.img_width = img_msg.width
+    saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
+    snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
+    has_subscribers = self.image_pub.get_num_connections() > 0
+    #rospy.logwarn(has_subscribers)
+    if saving_is_enabled or snapshot_enabled or has_subscribers:
+        self.current_image_header = img_msg.header
+        ros_timestamp = img_msg.header.stamp
+        # Convert ROS image to OpenCV for editing
+        cv2_bridge = CvBridge()
+        cv2_img = cv2_bridge.imgmsg_to_cv2(img_msg, "bgr8")
+        
+        ### Add overlay for current targets
+        target_dict = copy.deepcopy(self.current_targets_dict)
+        #rospy.logwarn(target_dict)
+        if target_dict == None:
+            target_dict = dict()
+        if len(target_dict.keys()) > 0:
+            for target_uid in target_dict.keys():
+                #rospy.logwarn(target_dict[target_uid])
+                target = target_dict[target_uid]
+                class_name = target['class_name']
+                [xmin_adj,xmax_adj,ymin_adj,ymax_adj] = target['bounding_box']
+                [target_range_m , target_horz_angle_deg , target_vert_angle_deg] = target['range_bearings']
+                ###### Apply Image Overlays and Publish Targeting_Image ROS Message
+                # Overlay adjusted detection boxes on image 
+                start_point = (xmin_adj, ymin_adj)
+                end_point = (xmax_adj, ymax_adj)
+                class_name = class_name
+                class_color = (255,0,0)
+                if class_name in self.current_classifier_classes:
+                    class_ind = self.current_classifier_classes.index(class_name)
+                    if class_ind < len(self.class_color_list):
+                        class_color = tuple(self.class_color_list[class_ind])
+                line_thickness = 2
+                cv2.rectangle(cv2_img, start_point, end_point, color=class_color, thickness=line_thickness)
+                # Overlay text data on OpenCV image
+                font                   = cv2.FONT_HERSHEY_DUPLEX
+                fontScale, thickness  = self.optimal_font_dims(cv2_img,font_scale = 1.2e-3, thickness_scale = 1.5e-3)
+                fontColor = (0, 255, 0)
+                lineType = 1
+                text_size = cv2.getTextSize("Text", 
+                    font, 
+                    fontScale,
+                    thickness)
+                line_height = text_size[1] * 3
+                # Overlay Label
+                text2overlay=target_uid
+                bottomLeftCornerOfText = (xmin_adj + line_thickness,ymin_adj + line_thickness * 2 + line_height)
+                cv2.putText(cv2_img,text2overlay, 
+                    bottomLeftCornerOfText, 
+                    font, 
+                    fontScale,
+                    fontColor,
+                    thickness,
+                    lineType)
+                
+                # Overlay Data
+                #rospy.logwarn(line_height)
+                if target_range_m == -999:
+                    text2overlay="#," + "%.f" % target_horz_angle_deg + "d," + "%.f" % target_vert_angle_deg + "d"
+                else:
+                    text2overlay="%.1f" % target_range_m + "m," + "%.f" % target_horz_angle_deg + "d," + "%.f" % target_vert_angle_deg + "d"
+                bottomLeftCornerOfText = (xmin_adj + line_thickness,ymin_adj + line_thickness * 2 + line_height * 2)
+                cv2.putText(cv2_img,text2overlay, 
+                    bottomLeftCornerOfText, 
+                    font, 
+                    fontScale,
+                    fontColor,
+                    thickness,
+                    lineType)
+                
+        #Convert OpenCV image to ROS image
+        img_out_msg = cv2_bridge.cv2_to_imgmsg(cv2_img,"bgr8")#desired_encoding='passthrough')
+        # Publish new image to ros
+        if not rospy.is_shutdown():
+            self.image_pub.publish(img_out_msg)
 
-    # Save Data if Time
-    self.save_img2file('ai_targeting_app','targeting_image',cv2_img,ros_timestamp)
+        # Save Data if Time
+        if saving_is_enabled or snapshot_enabled:
+            self.save_img2file('ai_targeting_app',data_product,cv2_img,ros_timestamp)
 
 
   def optimal_font_dims(self, img, font_scale = 2e-3, thickness_scale = 5e-3):
@@ -872,29 +970,37 @@ class NepiAiTargetingApp(object):
     self.np_depth_array_m[np.isinf(self.np_depth_array_m)] = 0 # zero pixels with inf value
 
   def pointcloudCb(self,pointcloud2_msg):
-      ros_timestamp = pointcloud2_msg.header.stamp
-      targeting_box_3d_list = copy.deepcopy(self.targeting_box_3d_list)
-      #rospy.logwarn(str(targeting_box_3d_list))
-      bb3d = None
-      if targeting_box_3d_list is not None:
-        for i in range(len(targeting_box_3d_list)):
-          if self.selected_target != "All" and targeting_box_3d_list[i].uid == self.selected_target:
-            bb3d = targeting_box_3d_list[i]
-        #rospy.logwarn(str(bb3d))
-        if bb3d != None:
-          #rospy.logwarn("Selected target 3d bounding box: " + str(bb3d))
-          o3d_pc = nepi_pc.rospc_to_o3dpc(pointcloud2_msg, remove_nans=True)
-          cap = rospy.get_param('~pc_clip_adjust',self.init_pc_clip_adjust)
-          ca = float(cap)/100
-          bounding_box_center = [bb3d.box_center_m.x,bb3d.box_center_m.y,bb3d.box_center_m.z]
-          bounding_box_extent = [ca*bb3d.box_extent_xyz_m.x,ca*bb3d.box_extent_xyz_m.y,ca*bb3d.box_extent_xyz_m.z]
-          bounding_box_rotation = [bb3d.box_rotation_rpy_deg.x,bb3d.box_rotation_rpy_deg.y,bb3d.box_rotation_rpy_deg.z]
-          o3d_pc = nepi_pc.clip_bounding_box(o3d_pc,bounding_box_center,bounding_box_extent,bounding_box_rotation)
-          ros_pc = nepi_pc.o3dpc_to_rospc(o3d_pc)
-          ros_pc.header = pointcloud2_msg.header
-          if not rospy.is_shutdown():
-            self.pointcloud_pub.publish(ros_pc)
-          #self.save_pc2file('ai_targeting_app','targeting_pointcloud',o3d_pc,ros_timestamp)
+      data_product = 'targeting_pointcloud'
+      saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
+      snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
+      has_subscribers = self.pointcloud_pub.get_num_connections() > 0
+
+      if saving_is_enabled or snapshot_enabled or has_subscribers: 
+        ros_timestamp = pointcloud2_msg.header.stamp
+        targeting_box_3d_list = copy.deepcopy(self.targeting_box_3d_list)
+        #rospy.logwarn(str(targeting_box_3d_list))
+        bb3d = None
+        if targeting_box_3d_list is not None:
+            for i in range(len(targeting_box_3d_list)):
+                if self.selected_target != "All" and targeting_box_3d_list[i].uid == self.selected_target:
+                    bb3d = targeting_box_3d_list[i]
+                #rospy.logwarn(str(bb3d))
+                if bb3d != None:
+                    #rospy.logwarn("Selected target 3d bounding box: " + str(bb3d))
+                    o3d_pc = nepi_pc.rospc_to_o3dpc(pointcloud2_msg, remove_nans=True)
+                    cap = rospy.get_param('~pc_clip_adjust',self.init_pc_clip_adjust)
+                    ca = float(cap)/100
+                    bounding_box_center = [bb3d.box_center_m.x,bb3d.box_center_m.y,bb3d.box_center_m.z]
+                    bounding_box_extent = [ca*bb3d.box_extent_xyz_m.x,ca*bb3d.box_extent_xyz_m.y,ca*bb3d.box_extent_xyz_m.z]
+                    bounding_box_rotation = [bb3d.box_rotation_rpy_deg.x,bb3d.box_rotation_rpy_deg.y,bb3d.box_rotation_rpy_deg.z]
+                    o3d_pc = nepi_pc.clip_bounding_box(o3d_pc,bounding_box_center,bounding_box_extent,bounding_box_rotation)
+                    ros_pc = nepi_pc.o3dpc_to_rospc(o3d_pc)
+                    ros_pc.header = pointcloud2_msg.header
+                    if not rospy.is_shutdown():
+                        self.pointcloud_pub.publish(ros_pc)
+                    
+                    if saving_is_enabled or snapshot_enabled:
+                        self.save_pc2file('ai_targeting_app',data_product,o3d_pc,ros_timestamp)
 
 
   ###################
@@ -961,46 +1067,35 @@ class NepiAiTargetingApp(object):
 
   def save_data2file(self,node_name,data_product,data,ros_timestamp):
       if self.save_data_if is not None:
-          saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
-          snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
-          # Save data if enabled
-          if saving_is_enabled or snapshot_enabled:
-              if data is not None:
-                  if (self.save_data_if.data_product_should_save(data_product) or snapshot_enabled):
-                      full_path_filename = self.save_data_if.get_full_path_filename(nepi_ros.get_datetime_str_from_stamp(ros_timestamp), 
-                                                                                              node_name + data_product, 'txt')
-                      if os.path.isfile(full_path_filename) is False:
-                          with open(full_path_filename, 'w') as f:
-                              f.write('input_image: ' + self.current_image_topic + '\n')
-                              f.write(str(msg))
+        saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
+        snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
+        if data is not None:
+            if (self.save_data_if.data_product_should_save(data_product) or snapshot_enabled):
+                full_path_filename = self.save_data_if.get_full_path_filename(nepi_ros.get_datetime_str_from_stamp(ros_timestamp), 
+                                                                                        node_name + data_product, 'txt')
+                if os.path.isfile(full_path_filename) is False:
+                    with open(full_path_filename, 'w') as f:
+                        f.write('input_image: ' + self.current_image_topic + '\n')
+                        f.write(str(msg))
+                        self.save_data_if.data_product_snapshot_reset(data_product)
 
   def save_img2file(self,node_name,data_product,cv2_img,ros_timestamp):
       if self.save_data_if is not None:
-          saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
-          snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
-          # Save data if enabled
-          if saving_is_enabled or snapshot_enabled:
-              if cv2_img is not None:
-                  if (self.save_data_if.data_product_should_save(data_product) or snapshot_enabled):
-                      full_path_filename = self.save_data_if.get_full_path_filename(nepi_ros.get_datetime_str_from_stamp(ros_timestamp), 
-                                                                                              node_name + data_product, 'png')
-                      if os.path.isfile(full_path_filename) is False:
-                          cv2.imwrite(full_path_filename, cv2_img)
-                          self.save_data_if.data_product_snapshot_reset(data_product)
+        if cv2_img is not None:
+            full_path_filename = self.save_data_if.get_full_path_filename(nepi_ros.get_datetime_str_from_stamp(ros_timestamp), 
+                                                                                    node_name + data_product, 'png')
+            if os.path.isfile(full_path_filename) is False:
+                cv2.imwrite(full_path_filename, cv2_img)
+                self.save_data_if.data_product_snapshot_reset(data_product)
 
   def save_pc2file(self,node_name,data_product,o3d_pc,ros_timestamp):
       if self.save_data_if is not None:
-          saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
-          snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
-          # Save data if enabled
-          if saving_is_enabled or snapshot_enabled:
-              if o3d_pc is not None:
-                  if (self.save_data_if.data_product_should_save(data_product) or snapshot_enabled):
-                      full_path_filename = self.save_data_if.get_full_path_filename(nepi_ros.get_datetime_str_from_stamp(ros_timestamp), 
-                                                                                              node_name + data_product, 'pcd')
-                      if os.path.isfile(full_path_filename) is False:
-                          nepi_pc.save_pointcloud(o3d_pc,full_path_filename)
-                          self.save_data_if.data_product_snapshot_reset(data_product)
+        if o3d_pc is not None:
+            full_path_filename = self.save_data_if.get_full_path_filename(nepi_ros.get_datetime_str_from_stamp(ros_timestamp), 
+                                                                                    node_name + data_product, 'pcd')
+            if os.path.isfile(full_path_filename) is False:
+                nepi_pc.save_pointcloud(o3d_pc,full_path_filename)
+                self.save_data_if.data_product_snapshot_reset(data_product)
 
                 
     
