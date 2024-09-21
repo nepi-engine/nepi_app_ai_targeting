@@ -345,6 +345,7 @@ class NepiAiTargetingApp(object):
       self.setFrame3dTransform(new_transform_msg)
 
   def setFrame3dTransform(self, transform_msg):
+      #rospy.loginfo("AI_TARG_APP: Recieved Transform message " + str(transform_msg))
       x = transform_msg.translate_vector.x
       y = transform_msg.translate_vector.y
       z = transform_msg.translate_vector.z
@@ -353,9 +354,9 @@ class NepiAiTargetingApp(object):
       yaw = transform_msg.rotate_vector.z
       heading = transform_msg.heading_offset
       transform = [x,y,z,roll,pitch,yaw,heading]
-      self.init_frame_3d_transform = rospy.set_param('~frame_3d_transform',  transform)
-      self.status_msg.frame_3d_transform = transform_msg
-      self.publishStatus(do_updates=False) # Updated inline here 
+      rospy.set_param('~frame_3d_transform',  transform)
+      #rospy.loginfo("AI_TARG_APP: Updated Transform: " + str(transform))
+
 
 
   #######################
@@ -598,7 +599,7 @@ class NepiAiTargetingApp(object):
     image_seq_num = bounding_boxes_msg.header.seq
     self.detect_boxes_msg=bounding_boxes_msg
     self.save_data2file('ai_detector_mgr','detection_boxes',bounding_boxes_msg,ros_timestamp)
-    transform = rospy.get_param('~idx/frame_3d_transform', self.init_frame_3d_transform)
+    transform = rospy.get_param('~frame_3d_transform', self.init_frame_3d_transform)
     selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
     alert_classes = list(selected_classes_dict.keys())
     # Check for alert class
@@ -814,17 +815,6 @@ class NepiAiTargetingApp(object):
                             bounding_box_msg.probability = box.probability
                             bbs2d.append(bounding_box_msg)
 
-
-                            # Create target_localizations
-                            target_data_msg=TargetLocalization()
-                            target_data_msg.Class = box.Class
-                            target_data_msg.id = box.id 
-                            target_data_msg.uid = target_uid
-                            target_data_msg.range_m=target_range_m
-                            target_data_msg.azimuth_deg=target_horz_angle_deg
-                            target_data_msg.elevation_deg=target_vert_angle_deg
-                            tls.append(target_data_msg)
-
                             # Create Bounding Box 3d
                             if target_range_m != -999:
                                 target_depth = selected_classes_dict[box.Class]['depth']
@@ -841,10 +831,10 @@ class NepiAiTargetingApp(object):
                                 theta_rad = theta_deg * math.pi/180 #  Vert Angle 0 - PI from top
                                 phi_deg =  (target_horz_angle_deg) # Horz Angle 0 - 360 from X axis counter clockwise
                                 phi_rad = phi_deg * math.pi/180 # Horz Angle 0 - 2 PI from from X axis counter clockwise
-
+                              
                                 bbc.x = target_range_m * math.sin(theta_rad) * math.cos(phi_rad) - transform[0]
-                                bbc.y = target_range_m * math.sin(theta_rad) * math.sin(phi_rad) - transform[0]
-                                bbc.z = target_range_m * math.cos(theta_rad) - transform[0]
+                                bbc.y = target_range_m * math.sin(theta_rad) * math.sin(phi_rad) - transform[1]
+                                bbc.z = target_range_m * math.cos(theta_rad) - transform[2]
                                 #rospy.logwarn([target_range_m,theta_deg,phi_deg,bbc.x, bbc.y,bbc.z])
                                 bounding_box_3d_msg.box_center_m.x = bbc.x + target_depth / 2
                                 bounding_box_3d_msg.box_center_m.y = bbc.y
@@ -861,16 +851,34 @@ class NepiAiTargetingApp(object):
                                 bounding_box_3d_msg.box_extent_xyz_m.x = bbe.x
                                 bounding_box_3d_msg.box_extent_xyz_m.y = bbe.y
                                 bounding_box_3d_msg.box_extent_xyz_m.z = bbe.z
-                                # Target Rotation Unknown
+                                # Target Rotation (roll,pitch,yaw)
                                 bbr = Vector3()
-                                bbr.x = 0
-                                bbr.y = 0
-                                bbr.z = 0
+                                bbr.x = -transform[3]
+                                bbr.y = -transform[4]
+                                bbr.z = -transform[5]
                                 bounding_box_3d_msg.box_rotation_rpy_deg.x = bbr.x
                                 bounding_box_3d_msg.box_rotation_rpy_deg.y = bbr.y
                                 bounding_box_3d_msg.box_rotation_rpy_deg.z = bbr.z
                                 # To Do Add Bounding Box 3D Data
                                 bbs3d.append(bounding_box_3d_msg)
+
+                                # Now update range and bearing values based on transform
+                                target_range_m = math.sqrt(bbc.x**2 + bbc.y**2 + bbc.z**2)
+                                #rospy.logwarn(str([bbc.x,bbc.y,bbc.z]))
+                                horz_ang = np.arctan(bbc.x/bbc.y) * 180/math.pi
+                                target_horz_angle_deg = np.sign(horz_ang) * (90 - abs(horz_ang)) - transform[5]
+                                vert_ang = np.arctan(bbc.x/-bbc.z) * 180/math.pi
+                                target_vert_angle_deg = np.sign(vert_ang) * (90 - abs(vert_ang)) - transform[4]
+
+                            # Create target_localizations
+                            target_data_msg=TargetLocalization()
+                            target_data_msg.Class = box.Class
+                            target_data_msg.id = box.id 
+                            target_data_msg.uid = target_uid
+                            target_data_msg.range_m=target_range_m
+                            target_data_msg.azimuth_deg=target_horz_angle_deg
+                            target_data_msg.elevation_deg=target_vert_angle_deg
+                            tls.append(target_data_msg)
 
                             # Update Current Targets List
                             if bounding_box_3d_msg is not None:
@@ -1119,9 +1127,17 @@ class NepiAiTargetingApp(object):
     status_msg.target_min_px_ratio = rospy.get_param('~target_min_px_ratio', self.init_target_min_px_ratio)
     status_msg.target_min_dist_m = rospy.get_param('~target_min_dist_m', self.init_target_min_dist_m)
     status_msg.target_age_filter = rospy.get_param('~target_age_filter', self.init_target_age_filter)
-    # The transfer frame into which 3D data (pointclouds) are transformed for the pointcloud data topic
-    transform_3d = rospy.get_param('~frame_3d_transform',  self.ZERO_TRANSFORM)
-    status_msg.transform_3d = str(transform_3d)
+    # The transfer frame for target data adjustments from image's native frame to the nepi center frame
+    transform = rospy.get_param('~frame_3d_transform',  self.init_frame_3d_transform)
+    transform_msg = Frame3DTransform()
+    transform_msg.translate_vector.x = transform[0]
+    transform_msg.translate_vector.y = transform[1]
+    transform_msg.translate_vector.z = transform[2]
+    transform_msg.rotate_vector.x = transform[3]
+    transform_msg.rotate_vector.y = transform[4]
+    transform_msg.rotate_vector.z = transform[5]
+    transform_msg.heading_offset = transform[6]
+    status_msg.frame_3d_transform = transform_msg
 
     self.status_pub.publish(status_msg)
 
