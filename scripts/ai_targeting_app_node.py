@@ -371,6 +371,9 @@ class NepiAiTargetingApp(object):
   ### Node Initialization
   def __init__(self):
    
+    node_name = "ai_targeting_app"
+    rospy.init_node(name=node_name)
+
     rospy.loginfo("AI_TRG_APP: Starting Initialization Processes")
     self.initParamServerValues(do_updates = False)
     self.resetParamServer(do_updates = False)
@@ -449,6 +452,10 @@ class NepiAiTargetingApp(object):
     ## Initiation Complete
     rospy.loginfo("AI_TRG_APP: Initialization Complete")
     self.publish_status()
+
+    # Spin forever (until object is detected)
+    rospy.spin()
+
 
   def updateHasSubscribersThread(self,timer):
     #self.has_subscribers_detect_img = (self.detection_image_pub.get_num_connections() > 0)
@@ -704,7 +711,9 @@ class NepiAiTargetingApp(object):
                         if delta_range > target_depth/2:
                             bins_per_target = 10
                             bin_step = target_depth / bins_per_target
-                            num_bins = int(delta_range / bin_step)
+                            num_bins = 1
+                            if bin_step > 0:
+                              num_bins = int(delta_range / bin_step)
                             # Get histogram
                             hist, hbins = np.histogram(depth_array, bins = num_bins, range = (min_range,max_range))
                             bins = hbins[1:] + (hbins[1:] - hbins[:-1]) / 2
@@ -1204,15 +1213,8 @@ class NepiAiTargetingApp(object):
 # Main
 #########################################
 if __name__ == '__main__':
-  node_name = "ai_targeting_app"
-  rospy.init_node(name=node_name)
-  #Launch the node
-  rospy.loginfo("AI_TRG_APP: Launching node named: " + node_name)
-  node = NepiAiTargetingApp()
-  #Set up node shutdown
-  rospy.on_shutdown(node.cleanup_actions)
-  # Spin forever (until object is detected)
-  rospy.spin()
+  NepiAiTargetingApp()
+
 
 
 
