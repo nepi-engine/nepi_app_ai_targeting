@@ -27,7 +27,7 @@ import Nepi_IF_SaveData from "./Nepi_IF_SaveData"
 
 @inject("ros")
 @observer
-class NepiAppAiTargeting extends Component {
+class AiTargetingApp extends Component {
   constructor(props) {
     super(props)
     var img = (this.props.ros.reportedClassifier !== null) ? this.props.ros.reportedClassifier.selected_img_topic.split("/") : null
@@ -406,4 +406,4 @@ class NepiAppAiTargeting extends Component {
       
 }
 
-export default NepiAppAiTargeting
+export default AiTargetingApp

@@ -42,6 +42,7 @@ class NepiAppAiTargetingControls extends Component {
       pointcloud_topic: null,
 
       available_classes_list: [],
+      last_classes_list: [],
       selected_classes_list:[],
       selected_classes_depth_list: [],
 
@@ -84,7 +85,9 @@ class NepiAppAiTargetingControls extends Component {
       showTransforms: false,
       update_transform: false,
 
+
       connected: false
+
 
     }
   
@@ -103,8 +106,8 @@ class NepiAppAiTargetingControls extends Component {
 
   // Callback for handling ROS Status messages
   targetingListenerFunc(message) {
+    const avail_classes_str_list = convertStrToStrList(message.available_classes_list)
     this.setState({
-
     targeting_controls_running: message.targeting_running,
     classifier_name: message.classifier_name,
     classifier_state: message.classifier_state,
@@ -126,7 +129,7 @@ class NepiAppAiTargetingControls extends Component {
     output_image_options_list: convertStrToStrList(message.output_image_options_list),
     selected_output_image: message.selected_output_image,
 
-    available_classes_list: convertStrToStrList(message.available_classes_list),
+    available_classes_list: avail_classes_str_list,
     selected_classes_list: convertStrToStrList(message.selected_classes_list),
     selected_classes_depth_list: convertStrToStrList(message.selected_classes_depth_list),
     available_targets_list: convertStrToStrList(message.available_targets_list),
@@ -152,7 +155,16 @@ class NepiAppAiTargetingControls extends Component {
     this.setState({
       connected: true
     })
-    window.location.reload();
+
+    const last_classes_list = this.state.last_classes_list
+    this.setState({
+      last_classes_list: avail_classes_str_list
+    })
+    if (last_classes_list !== avail_classes_str_list){
+      this.render()
+    }
+
+
   }
 
   setupStatusListener(namespace, msg_type, callback) {
@@ -226,7 +238,7 @@ class NepiAppAiTargetingControls extends Component {
     }
     var targetingListener = this.props.ros.setupStatusListener(
           statusNamespace,
-          "nepi_ros_interfaces/AiTargetingStatus",
+          "nepi_app_ai_targeting/AiTargetingStatus",
           this.targetingListenerFunc
         )
     this.setState({ targetingListener: targetingListener})
@@ -313,11 +325,7 @@ class NepiAppAiTargetingControls extends Component {
     const NoneOption = <Option>None</Option>
     const targeting_running = (this.state.targeting_controls_running !== null)? this.state.targeting_controls_running : false
     return (
-      <Section title={"Targeting Controls"}>
-
-        <Label title={"App Running"}>
-          <BooleanIndicator value={(this.state.connected)} />
-        </Label>
+      <Section title={"Targeting Controls *** Refresh page after AI running to update ***"}>
 
       <Columns>
         <Column>

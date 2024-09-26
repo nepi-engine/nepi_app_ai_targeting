@@ -15,6 +15,6 @@ APP_FILE = 'ai_targeting_app_node.py'
 NODE_NAME = 'app_ai_targeting'
 RUI_FILES = ['NepiAppAiTargeting.js','NepiAppAiTargetingControls.js']
 RUI_MAIN_FILE = "NepiAppAiTargeting.js"
-RUI_MAIN_CLASS = "NepiAppAiTargeting"
+RUI_MAIN_CLASS = "AiTargetingApp"
 RUI_MENU_NAME = "AI Targeting"
 

@@ -39,12 +39,12 @@ from cv_bridge import CvBridge
 from nepi_ros_interfaces.msg import ClassifierSelection,  \
                                     BoundingBox, BoundingBoxes, BoundingBox3D, BoundingBoxes3D, \
                                     ObjectCount, ClassifierSelection, \
-                                    AiTargetingStatus, \
                                     StringArray, TargetLocalization, TargetLocalizations
 from nepi_ros_interfaces.srv import ImageClassifierStatusQuery, ImageClassifierStatusQueryRequest
 from nepi_ros_interfaces.msg import Frame3DTransform
 from nepi_edge_sdk_base.save_data_if import SaveDataIF
 from nepi_edge_sdk_base.save_cfg_if import SaveCfgIF
+from nepi_app_ai_targeting.msg import AiTargetingStatus
 
 # Do this at the end
 #from scipy.signal import find_peaks
