@@ -28,6 +28,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from nepi_edge_sdk_base import nepi_ros
+from nepi_edge_sdk_base import nepi_msg
 from nepi_edge_sdk_base import nepi_pc 
 from nepi_edge_sdk_base import nepi_img 
 
@@ -145,236 +146,17 @@ class NepiAiTargetingApp(object):
   has_subscribers_target_img = False
 
   #######################
-  ### App Config Functions
-
-  def resetAppCb(self,msg):
-    self.resetApp()
-
-  def resetApp(self):
-    rospy.set_param('~last_classifier', "")
-    rospy.set_param('~selected_output_image', self.FACTORY_OUTPUT_IMAGE)
-    rospy.set_param('~selected_classes_dict', dict())
-    rospy.set_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
-    rospy.set_param('~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
-    rospy.set_param('~target_box_percent',  self.FACTORY_TARGET_BOX_SIZE_PERCENT)
-    rospy.set_param('~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
-    rospy.set_param('~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
-    rospy.set_param('~target_min_px_ratio', self.FACTORY_TARGET_MIN_PX_RATIO)
-    rospy.set_param('~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
-    rospy.set_param('~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
-    rospy.set_param('~frame_3d_transform', self.ZERO_TRANSFORM)
-    self.current_targets_dict = dict()
-    self.lost_targets_dict = dict()
-    self.publish_status()
-
-  def saveConfigCb(self, msg):  # Just update Class init values. Saving done by Config IF system
-    pass # Left empty for sim, Should update from param server
-
-  def setCurrentAsDefault(self):
-    self.initParamServerValues(do_updates = False)
-
-  def updateFromParamServer(self):
-    #rospy.logwarn("Debugging: param_dict = " + str(param_dict))
-    #Run any functions that need updating on value change
-    # Don't need to run any additional functions
-    pass
-
-  def initParamServerValues(self,do_updates = True):
-      rospy.loginfo("AI_TRG_APP: Setting init values to param values")
-      self.init_last_classifier = rospy.get_param("~last_classifier", "")
-      self.init_selected_output_image = rospy.get_param('~selected_output_image', self.FACTORY_OUTPUT_IMAGE)
-      self.init_selected_classes_dict = rospy.get_param('~selected_classes_dict', dict())
-      self.init_image_fov_vert = rospy.get_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
-      self.init_image_fov_horz = rospy.get_param('~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
-      self.init_target_box_adjust = rospy.get_param('~target_box_percent',  self.FACTORY_TARGET_BOX_SIZE_PERCENT)
-      self.init_default_target_depth = rospy.get_param('~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
-      self.init_target_min_points = rospy.get_param('~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
-      self.init_target_min_px_ratio = rospy.get_param('~target_min_px_ratio', self.FACTORY_TARGET_MIN_PX_RATIO)
-      self.init_target_min_dist_m = rospy.get_param('~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
-      self.init_target_age_filter = rospy.get_param('~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
-      self.init_frame_3d_transform = rospy.get_param('~frame_3d_transform', self.ZERO_TRANSFORM)
-      self.resetParamServer(do_updates)
-
-  def resetParamServer(self,do_updates = True):
-      rospy.set_param('~last_classiier', self.init_last_classifier)
-      rospy.set_param('~selected_output_image', self.init_selected_output_image)
-      rospy.set_param('~selected_classes_dict', self.init_selected_classes_dict)
-      rospy.set_param('~image_fov_vert',  self.init_image_fov_vert)
-      rospy.set_param('~image_fov_horz', self.init_image_fov_horz)
-      rospy.set_param('~target_box_percent',  self.init_target_box_adjust)
-      rospy.set_param('~default_target_depth',  self.init_default_target_depth)
-      rospy.set_param('~target_min_points', self.init_target_min_points)
-      rospy.set_param('~target_min_px_ratio', self.init_target_min_px_ratio)
-      rospy.get_param('~target_min_dist_m', self.init_target_min_dist_m)
-      rospy.set_param('~target_age_filter', self.init_target_age_filter)
-      rospy.set_param('~frame_3d_transform', self.init_frame_3d_transform)
-      if do_updates:
-          self.updateFromParamServer()
-          self.publish_status()
-
-
-
-  ###################
-  ## AI Manager Passthrough Callbacks
-
-  def startClassifierCb(self,msg):
-    ##rospy.loginfo(msg)
-    self.start_classifier_pub.publish(msg)
-
-  def stopClassifierCb(self,msg):
-    ##rospy.loginfo(msg)
-    self.stop_classifier_pub.publish(msg)
-
-  def setThresholdCb(self,msg):
-    ##rospy.loginfo(msg)
-    self.set_threshold_pub.publish(msg)
-
-  ###################
-  ## AI App Callbacks
-
-
-  def selectImageCb(self,msg):
-    ##rospy.loginfo(msg)
-    image_name = msg.data
-    if image_name in self.output_image_options:
-      rospy.set_param('~selected_output_image', image_name)
-    self.publish_status()
-
-
-  def addAllClassesCb(self,msg):
-    ##rospy.loginfo(msg)
-    classes = self.current_classifier_classes
-    depth = rospy.get_param('~default_target_depth',self.init_default_target_depth)
-    selected_dict = dict()
-    for Class in classes:
-      selected_dict[Class] = {'depth': depth }
-    rospy.set_param('~selected_classes_dict', selected_dict)
-    self.publish_status()
-
-  def removeAllClassesCb(self,msg):
-    ##rospy.loginfo(msg)
-    rospy.set_param('~selected_classes_dict', dict())
-    self.publish_status()
-
-  def addClassCb(self,msg):
-    ##rospy.loginfo(msg)
-    class_name = msg.data
-    class_depth_m = rospy.get_param('~default_target_depth',  self.init_default_target_depth)
-    if class_name in self.current_classifier_classes:
-      selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
-      selected_classes_dict[class_name] = {'depth': class_depth_m}
-      rospy.set_param('~selected_classes_dict', selected_classes_dict)
-    self.publish_status()
-
-  def removeClassCb(self,msg):
-    ##rospy.loginfo(msg)
-    class_name = msg.data
-    selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
-    if class_name in selected_classes_dict.keys():
-      del selected_classes_dict[class_name]
-      rospy.set_param('~selected_classes_dict', selected_classes_dict)
-    self.publish_status()
-
-
-  def selectTargetCb(self,msg):
-    ##rospy.loginfo(msg)
-    target_name = msg.data
-    if target_name == 'All' or target_name in self.current_targets_dict.keys():
-      self.selected_target = target_name
-    self.publish_status()
-
-  def setVertFovCb(self,msg):
-    ##rospy.loginfo(msg)
-    fov = msg.data
-    if fov > 0:
-      rospy.set_param('~image_fov_vert',  fov)
-    self.publish_status()
-
-
-  def setHorzFovCb(self,msg):
-    ##rospy.loginfo(msg)
-    fov = msg.data
-    if fov > 0:
-      rospy.set_param('~image_fov_horz',  fov)
-    self.publish_status()
-    
-  def setTargetBoxPercentCb(self,msg):
-    #rospy.loginfo(msg)
-    val = msg.data
-    if val >= 10 and val <= 200:
-      rospy.set_param('~target_box_percent',val)
-    self.publish_status()   
-      
-  def setDefaultTargetDepthCb(self,msg):
-    #rospy.loginfo(msg)
-    val = msg.data
-    if val >= 0:
-      rospy.set_param('~default_target_depth',val)
-    self.publish_status()   
-
-  def setTargetMinPointsCb(self,msg):
-    #rospy.loginfo(msg)
-    val = msg.data
-    if val >= 0:
-      rospy.set_param('~target_min_points',val)
-    self.publish_status() 
-
-  def setTargetMinPxRatioCb(self,msg):
-    #rospy.loginfo(msg)
-    val = msg.data
-    if val >= 0 and val <= 1:
-      rospy.set_param('~target_min_px_ratio',val)
-    self.publish_status() 
-
-  def setTargetMinDistMCb(self,msg):
-    #rospy.loginfo(msg)
-    val = msg.data
-    if val >= 0:
-      rospy.set_param('~target_min_dist_m',val)
-    self.publish_status() 
-
-  def setAgeFilterCb(self,msg):
-    #rospy.loginfo(msg)
-    val = msg.data
-    if val >= 0:
-      rospy.set_param('~target_age_filter',val)
-    self.publish_status()
-
-  def setFrame3dTransformCb(self, msg):
-      new_transform_msg = msg
-      self.setFrame3dTransform(new_transform_msg)
-
-  def setFrame3dTransform(self, transform_msg):
-      #rospy.loginfo("AI_TARG_APP: Recieved Transform message " + str(transform_msg))
-      x = transform_msg.translate_vector.x
-      y = transform_msg.translate_vector.y
-      z = transform_msg.translate_vector.z
-      roll = transform_msg.rotate_vector.x
-      pitch = transform_msg.rotate_vector.y
-      yaw = transform_msg.rotate_vector.z
-      heading = transform_msg.heading_offset
-      transform = [x,y,z,roll,pitch,yaw,heading]
-      rospy.set_param('~frame_3d_transform',  transform)
-      #rospy.loginfo("AI_TARG_APP: Updated Transform: " + str(transform))
-
-  def clearFrame3dTransformCb(self, msg):
-      new_transform_msg = msg
-      self.clearFrame3dTransform()
-
-  def clearFrame3dTransform(self, transform_msg):
-      transform = self.ZERO_TRANSFORM
-      self.init_frame_3d_transform = rospy.set_param('~idx/frame_3d_transform',  transform)
-      self.status_msg.frame_3d_transform = transform_msg
-      self.publishStatus(do_updates=False) # Updated inline here 
-
-  #######################
   ### Node Initialization
+  DEFAULT_NODE_NAME = "ai_targeting_app" # Can be overwitten by luanch command
   def __init__(self):
+    #### APP NODE INIT SETUP ####
+    nepi_ros.init_node(name= self.DEFAULT_NODE_NAME)
+    self.node_name = nepi_ros.get_node_name()
+    self.base_namespace = nepi_ros.get_base_namespace()
+    nepi_msg.createMsgPublishers(self)
+    nepi_msg.publishMsgInfo(self,"Starting Initialization Processes")
+    ##############################
    
-    node_name = "ai_targeting_app"
-    rospy.init_node(name=node_name)
-
-    rospy.loginfo("AI_TRG_APP: Starting Initialization Processes")
     self.initParamServerValues(do_updates = False)
     self.resetParamServer(do_updates = False)
    
@@ -450,11 +232,237 @@ class NepiAiTargetingApp(object):
 
     time.sleep(1)
     ## Initiation Complete
-    rospy.loginfo("AI_TRG_APP: Initialization Complete")
+    nepi_msg.publishMsgInfo(self," Initialization Complete")
     self.publish_status()
 
     # Spin forever (until object is detected)
     rospy.spin()
+
+
+
+
+  #######################
+  ### App Config Functions
+
+  def resetAppCb(self,msg):
+    self.resetApp()
+
+  def resetApp(self):
+    rospy.set_param('~last_classifier', "")
+    rospy.set_param('~selected_output_image', self.FACTORY_OUTPUT_IMAGE)
+    rospy.set_param('~selected_classes_dict', dict())
+    rospy.set_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
+    rospy.set_param('~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
+    rospy.set_param('~target_box_percent',  self.FACTORY_TARGET_BOX_SIZE_PERCENT)
+    rospy.set_param('~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
+    rospy.set_param('~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
+    rospy.set_param('~target_min_px_ratio', self.FACTORY_TARGET_MIN_PX_RATIO)
+    rospy.set_param('~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
+    rospy.set_param('~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
+    rospy.set_param('~frame_3d_transform', self.ZERO_TRANSFORM)
+    self.current_targets_dict = dict()
+    self.lost_targets_dict = dict()
+    self.publish_status()
+
+  def saveConfigCb(self, msg):  # Just update Class init values. Saving done by Config IF system
+    pass # Left empty for sim, Should update from param server
+
+  def setCurrentAsDefault(self):
+    self.initParamServerValues(do_updates = False)
+
+  def updateFromParamServer(self):
+    #nepi_msg.publishMsgWarn(self,"Debugging: param_dict = " + str(param_dict))
+    #Run any functions that need updating on value change
+    # Don't need to run any additional functions
+    pass
+
+  def initParamServerValues(self,do_updates = True):
+      nepi_msg.publishMsgInfo(self," Setting init values to param values")
+      self.init_last_classifier = rospy.get_param("~last_classifier", "")
+      self.init_selected_output_image = rospy.get_param('~selected_output_image', self.FACTORY_OUTPUT_IMAGE)
+      self.init_selected_classes_dict = rospy.get_param('~selected_classes_dict', dict())
+      self.init_image_fov_vert = rospy.get_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
+      self.init_image_fov_horz = rospy.get_param('~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
+      self.init_target_box_adjust = rospy.get_param('~target_box_percent',  self.FACTORY_TARGET_BOX_SIZE_PERCENT)
+      self.init_default_target_depth = rospy.get_param('~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
+      self.init_target_min_points = rospy.get_param('~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
+      self.init_target_min_px_ratio = rospy.get_param('~target_min_px_ratio', self.FACTORY_TARGET_MIN_PX_RATIO)
+      self.init_target_min_dist_m = rospy.get_param('~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
+      self.init_target_age_filter = rospy.get_param('~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
+      self.init_frame_3d_transform = rospy.get_param('~frame_3d_transform', self.ZERO_TRANSFORM)
+      self.resetParamServer(do_updates)
+
+  def resetParamServer(self,do_updates = True):
+      rospy.set_param('~last_classiier', self.init_last_classifier)
+      rospy.set_param('~selected_output_image', self.init_selected_output_image)
+      rospy.set_param('~selected_classes_dict', self.init_selected_classes_dict)
+      rospy.set_param('~image_fov_vert',  self.init_image_fov_vert)
+      rospy.set_param('~image_fov_horz', self.init_image_fov_horz)
+      rospy.set_param('~target_box_percent',  self.init_target_box_adjust)
+      rospy.set_param('~default_target_depth',  self.init_default_target_depth)
+      rospy.set_param('~target_min_points', self.init_target_min_points)
+      rospy.set_param('~target_min_px_ratio', self.init_target_min_px_ratio)
+      rospy.get_param('~target_min_dist_m', self.init_target_min_dist_m)
+      rospy.set_param('~target_age_filter', self.init_target_age_filter)
+      rospy.set_param('~frame_3d_transform', self.init_frame_3d_transform)
+      if do_updates:
+          self.updateFromParamServer()
+          self.publish_status()
+
+
+
+  ###################
+  ## AI Manager Passthrough Callbacks
+
+  def startClassifierCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    self.start_classifier_pub.publish(msg)
+
+  def stopClassifierCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    self.stop_classifier_pub.publish(msg)
+
+  def setThresholdCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    self.set_threshold_pub.publish(msg)
+
+  ###################
+  ## AI App Callbacks
+
+
+  def selectImageCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    image_name = msg.data
+    if image_name in self.output_image_options:
+      rospy.set_param('~selected_output_image', image_name)
+    self.publish_status()
+
+
+  def addAllClassesCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    classes = self.current_classifier_classes
+    depth = rospy.get_param('~default_target_depth',self.init_default_target_depth)
+    selected_dict = dict()
+    for Class in classes:
+      selected_dict[Class] = {'depth': depth }
+    rospy.set_param('~selected_classes_dict', selected_dict)
+    self.publish_status()
+
+  def removeAllClassesCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    rospy.set_param('~selected_classes_dict', dict())
+    self.publish_status()
+
+  def addClassCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    class_name = msg.data
+    class_depth_m = rospy.get_param('~default_target_depth',  self.init_default_target_depth)
+    if class_name in self.current_classifier_classes:
+      selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
+      selected_classes_dict[class_name] = {'depth': class_depth_m}
+      rospy.set_param('~selected_classes_dict', selected_classes_dict)
+    self.publish_status()
+
+  def removeClassCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    class_name = msg.data
+    selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
+    if class_name in selected_classes_dict.keys():
+      del selected_classes_dict[class_name]
+      rospy.set_param('~selected_classes_dict', selected_classes_dict)
+    self.publish_status()
+
+
+  def selectTargetCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    target_name = msg.data
+    if target_name == 'All' or target_name in self.current_targets_dict.keys():
+      self.selected_target = target_name
+    self.publish_status()
+
+  def setVertFovCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    fov = msg.data
+    if fov > 0:
+      rospy.set_param('~image_fov_vert',  fov)
+    self.publish_status()
+
+
+  def setHorzFovCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    fov = msg.data
+    if fov > 0:
+      rospy.set_param('~image_fov_horz',  fov)
+    self.publish_status()
+    
+  def setTargetBoxPercentCb(self,msg):
+    #nepi_msg.publishMsgInfo(self,msg)
+    val = msg.data
+    if val >= 10 and val <= 200:
+      rospy.set_param('~target_box_percent',val)
+    self.publish_status()   
+      
+  def setDefaultTargetDepthCb(self,msg):
+    #nepi_msg.publishMsgInfo(self,msg)
+    val = msg.data
+    if val >= 0:
+      rospy.set_param('~default_target_depth',val)
+    self.publish_status()   
+
+  def setTargetMinPointsCb(self,msg):
+    #nepi_msg.publishMsgInfo(self,msg)
+    val = msg.data
+    if val >= 0:
+      rospy.set_param('~target_min_points',val)
+    self.publish_status() 
+
+  def setTargetMinPxRatioCb(self,msg):
+    #nepi_msg.publishMsgInfo(self,msg)
+    val = msg.data
+    if val >= 0 and val <= 1:
+      rospy.set_param('~target_min_px_ratio',val)
+    self.publish_status() 
+
+  def setTargetMinDistMCb(self,msg):
+    #nepi_msg.publishMsgInfo(self,msg)
+    val = msg.data
+    if val >= 0:
+      rospy.set_param('~target_min_dist_m',val)
+    self.publish_status() 
+
+  def setAgeFilterCb(self,msg):
+    #nepi_msg.publishMsgInfo(self,msg)
+    val = msg.data
+    if val >= 0:
+      rospy.set_param('~target_age_filter',val)
+    self.publish_status()
+
+  def setFrame3dTransformCb(self, msg):
+      new_transform_msg = msg
+      self.setFrame3dTransform(new_transform_msg)
+
+  def setFrame3dTransform(self, transform_msg):
+      #nepi_msg.publishMsgInfo(self,"AI_TARG_APP: Recieved Transform message " + str(transform_msg))
+      x = transform_msg.translate_vector.x
+      y = transform_msg.translate_vector.y
+      z = transform_msg.translate_vector.z
+      roll = transform_msg.rotate_vector.x
+      pitch = transform_msg.rotate_vector.y
+      yaw = transform_msg.rotate_vector.z
+      heading = transform_msg.heading_offset
+      transform = [x,y,z,roll,pitch,yaw,heading]
+      rospy.set_param('~frame_3d_transform',  transform)
+      #nepi_msg.publishMsgInfo(self,"AI_TARG_APP: Updated Transform: " + str(transform))
+
+  def clearFrame3dTransformCb(self, msg):
+      new_transform_msg = msg
+      self.clearFrame3dTransform()
+
+  def clearFrame3dTransform(self, transform_msg):
+      transform = self.ZERO_TRANSFORM
+      self.init_frame_3d_transform = rospy.set_param('~idx/frame_3d_transform',  transform)
+      self.status_msg.frame_3d_transform = transform_msg
+      self.publishStatus(do_updates=False) # Updated inline here 
 
 
   def updateHasSubscribersThread(self,timer):
@@ -474,20 +482,20 @@ class NepiAiTargetingApp(object):
     lost_targets_dict = copy.deepcopy(self.lost_targets_dict)
     purge_list = []
     age_filter_sec = rospy.get_param('~target_age_filter', self.init_target_age_filter)
-    #rospy.logwarn(active_targets_dict)
+    #nepi_msg.publishMsgWarn(self,active_targets_dict)
     for target in active_targets_dict.keys():
       last_timestamp = active_targets_dict[target]['last_detection_timestamp']
-      #rospy.logwarn(target)
-      #rospy.logwarn(ros_timestamp.to_sec())
-      #rospy.logwarn(last_timestamp.to_sec())
+      #nepi_msg.publishMsgWarn(self,target)
+      #nepi_msg.publishMsgWarn(self,ros_timestamp.to_sec())
+      #nepi_msg.publishMsgWarn(self,last_timestamp.to_sec())
       age =(current_timestamp.to_sec() - last_timestamp.to_sec())
-      #rospy.logwarn("Target " + target + " age: " + str(age))
+      #nepi_msg.publishMsgWarn(self,"Target " + target + " age: " + str(age))
       if age > age_filter_sec:
         purge_list.append(target)
-    #rospy.logwarn("Target Purge List: " + str(purge_list))
+    #nepi_msg.publishMsgWarn(self,"Target Purge List: " + str(purge_list))
     for target in purge_list: 
         lost_targets_dict[target] = active_targets_dict[target]
-        rospy.loginfo("AI_TRG_APP: Purging target: " + target + " from active target list")
+        nepi_msg.publishMsgInfo(self," Purging target: " + target + " from active target list")
         del active_targets_dict[target]
         update_status = True
     self.active_targets_dict = active_targets_dict
@@ -496,10 +504,10 @@ class NepiAiTargetingApp(object):
     try:
       ai_mgr_status_response = self.get_ai_mgr_status_service()
     except Exception as e:
-      rospy.loginfo("AI_TRG_APP: Failed to call AI MGR STATUS service " + str(e))
+      nepi_msg.publishMsgInfo(self," Failed to call AI MGR STATUS service " + str(e))
       return
     #status_str = str(ai_mgr_status_response)
-    #rospy.logwarn("AI_TRG_APP: got ai manager status: " + status_str)
+    #nepi_msg.publishMsgWarn(self," got ai manager status: " + status_str)
     self.current_image_topic = ai_mgr_status_response.selected_img_topic
     self.current_classifier = ai_mgr_status_response.selected_classifier
     self.current_classifier_state = ai_mgr_status_response.classifier_state
@@ -518,9 +526,9 @@ class NepiAiTargetingApp(object):
             rgb.append(int(color[i]*255))
           rgb_list.append(rgb)
         self.class_color_list = rgb_list
-        #rospy.logwarn(self.class_color_list)
+        #nepi_msg.publishMsgWarn(self,self.class_color_list)
       #classes_str = str(self.current_classifier_classes)
-      #rospy.logwarn("AI_TRG_APP: got ai manager status: " + classes_str)
+      #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
       update_status = True
   
     selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
@@ -535,7 +543,7 @@ class NepiAiTargetingApp(object):
 
     if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None"):
       image_topic = nepi_ros.find_topic(self.current_image_topic)
-      #rospy.logwarn(depth_map_topic)
+      #nepi_msg.publishMsgWarn(self,depth_map_topic)
       update_status = True
       if image_topic != "":
         self.current_image_topic = image_topic
@@ -545,7 +553,7 @@ class NepiAiTargetingApp(object):
           self.image_sub.unregister()
           self.image_sub = None
           time.sleep(1)
-        rospy.loginfo("AI_TRG_APP: Subscribing to Image topic : " + image_topic)
+        nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
         self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 1)
       
         # Look for Depth Map
@@ -557,13 +565,13 @@ class NepiAiTargetingApp(object):
         else:
           self.has_depth_map = True
         self.depth_map_topic = depth_map_topic
-        #rospy.logwarn(self.depth_map_topic)
+        #nepi_msg.publishMsgWarn(self,self.depth_map_topic)
         if depth_map_topic != "None":
           if self.depth_map_sub != None:
             self.depth_map_sub.unregister()
             self.depth_map_sub = None
             time.sleep(1)
-          rospy.loginfo("AI_TRG_APP: Subscribing to Depth Map topic : " + depth_map_topic)
+          nepi_msg.publishMsgInfo(self," Subscribing to Depth Map topic : " + depth_map_topic)
           self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
           update_status = True
           # If there is a depth_map, check for pointdcloud
@@ -684,7 +692,7 @@ class NepiAiTargetingApp(object):
                     ymax_adj=box.ymax + delta_y
                     xmin_adj=box.xmin - delta_x
                     xmax_adj=box.xmax + delta_x
-                    #rospy.logwarn([ymin_adj,ymax_adj,xmin_adj,xmax_adj])
+                    #nepi_msg.publishMsgWarn(self,[ymin_adj,ymax_adj,xmin_adj,xmax_adj])
                     # Calculate target range
                     target_range_m=float(-999)  # NEPI standard unset value
                     target_depth = selected_classes_dict[box.Class]['depth']
@@ -698,8 +706,8 @@ class NepiAiTargetingApp(object):
                         depth_array = depth_array[~np.isnan(depth_array)] # remove nan entries
                         depth_array = depth_array[depth_array>0] # remove zero entries
                         depth_val=np.mean(depth_array) # Initialize fallback value.  maybe updated
-                        #rospy.logwarn("got depth data")
-                        #rospy.logwarn(depth_val)
+                        #nepi_msg.publishMsgWarn(self,"got depth data")
+                        #nepi_msg.publishMsgWarn(self,depth_val)
                         # Try histogram calculation
                         try:
                           min_range = np.min(depth_array)
@@ -729,7 +737,7 @@ class NepiAiTargetingApp(object):
                                     max_hist_ind = ih
                                 elif val < max_hist_val:
                                     break 
-                            #rospy.logwarn(max_hist_ind)
+                            #nepi_msg.publishMsgWarn(self,max_hist_ind)
                             hist_len = len(hist)
                             bins_len = len(bins)
                             # Hanning window on targets
@@ -752,9 +760,9 @@ class NepiAiTargetingApp(object):
                                 han_win[back_pad:] = 0
                                 han_win_len = len(han_win)
                                 
-                                #rospy.logwarn([min_range,max_range])
-                                #rospy.logwarn(bins)
-                                #rospy.logwarn(han_win)
+                                #nepi_msg.publishMsgWarn(self,[min_range,max_range])
+                                #nepi_msg.publishMsgWarn(self,bins)
+                                #nepi_msg.publishMsgWarn(self,han_win)
                                 if np.sum(han_win) > .1:
                                     depth_val=np.average(bins,weights = han_win)
                                 
@@ -765,13 +773,13 @@ class NepiAiTargetingApp(object):
                         depth_array=depth_array[depth_array > min_filter]
                         depth_array=depth_array[depth_array < max_filter]
                         depth_len=len(depth_array)
-                        #rospy.logwarn("")
-                        #rospy.logwarn(depth_len)
+                        #nepi_msg.publishMsgWarn(self,"")
+                        #nepi_msg.publishMsgWarn(self,depth_len)
                         if depth_len > target_min_points:
                             target_range_m=depth_val
                         else:
                             target_range_m= -999
-                        #rospy.logwarn(target_range_m)
+                        #nepi_msg.publishMsgWarn(self,target_range_m)
                         
                     # Calculate target bearings
                     object_loc_y_pix = float(box.ymin + ((box.ymax - box.ymin))  / 2) 
@@ -853,7 +861,7 @@ class NepiAiTargetingApp(object):
                                 bbc.x = target_range_m * math.sin(theta_rad) * math.cos(phi_rad) - transform[0]
                                 bbc.y = target_range_m * math.sin(theta_rad) * math.sin(phi_rad) - transform[1]
                                 bbc.z = target_range_m * math.cos(theta_rad) - transform[2]
-                                #rospy.logwarn([target_range_m,theta_deg,phi_deg,bbc.x, bbc.y,bbc.z])
+                                #nepi_msg.publishMsgWarn(self,[target_range_m,theta_deg,phi_deg,bbc.x, bbc.y,bbc.z])
                                 bounding_box_3d_msg.box_center_m.x = bbc.x + target_depth / 2
                                 bounding_box_3d_msg.box_center_m.y = bbc.y
                                 bounding_box_3d_msg.box_center_m.z = bbc.z 
@@ -882,7 +890,7 @@ class NepiAiTargetingApp(object):
 
                                 # Now update range and bearing values based on transform
                                 target_range_m = math.sqrt(bbc.x**2 + bbc.y**2 + bbc.z**2)
-                                #rospy.logwarn(str([bbc.x,bbc.y,bbc.z]))
+                                #nepi_msg.publishMsgWarn(self,str([bbc.x,bbc.y,bbc.z]))
                                 horz_ang = np.arctan(bbc.x/bbc.y) * 180/math.pi
                                 target_horz_angle_deg = np.sign(horz_ang) * (90 - abs(horz_ang)) - transform[5]
                                 vert_ang = np.arctan(bbc.x/-bbc.z) * 180/math.pi
@@ -923,7 +931,7 @@ class NepiAiTargetingApp(object):
     if current_targets_dict.keys() != self.current_targets_dict.keys():
         self.publish_status()
     self.current_targets_dict = current_targets_dict
-    #rospy.logwarn(self.current_targets_dict)
+    #nepi_msg.publishMsgWarn(self,self.current_targets_dict)
 
     # Publish and Save 2D Bounding Boxes
     if len(bbs2d) > 0:
@@ -949,8 +957,8 @@ class NepiAiTargetingApp(object):
 
     # Publish and Save 3D Bounding Boxes
     self.targeting_box_3d_list = bbs3d
-    #rospy.logwarn("")
-    #rospy.logwarn(bbs3d)
+    #nepi_msg.publishMsgWarn(self,"")
+    #nepi_msg.publishMsgWarn(self,bbs3d)
     if len(bbs3d) > 0:
       targeting_boxes_3d_msg = BoundingBoxes3D()
       targeting_boxes_3d_msg.header = detect_header
@@ -1007,7 +1015,7 @@ class NepiAiTargetingApp(object):
             target_dict = dict()
         if len(target_dict.keys()) > 0:
             for target_uid in target_dict.keys():
-                #rospy.logwarn(target_dict[target_uid])
+                #nepi_msg.publishMsgWarn(self,target_dict[target_uid])
                 target = target_dict[target_uid]
                 class_name = target['class_name']
                 [target_range_m , target_horz_angle_deg , target_vert_angle_deg] = target['range_bearings']
@@ -1052,7 +1060,7 @@ class NepiAiTargetingApp(object):
                       lineType)
                 
                   # Overlay Data
-                  #rospy.logwarn(line_height)
+                  #nepi_msg.publishMsgWarn(self,line_height)
                   if target_range_m == -999:
                       text2overlay="#," + "%.f" % target_horz_angle_deg + "d," + "%.f" % target_vert_angle_deg + "d"
                   else:
@@ -1206,7 +1214,7 @@ class NepiAiTargetingApp(object):
   # Node Cleanup Function
   
   def cleanup_actions(self):
-    rospy.loginfo("AI_TRG_APP: Shutting down: Executing script cleanup actions")
+    nepi_msg.publishMsgInfo(self," Shutting down: Executing script cleanup actions")
 
 
 #########################################
