@@ -211,13 +211,13 @@ install(DIRECTORY etc/
 )
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
-set( NEPI_APP_LAUNCH_FOLDER 
+set( NEPI_APP_INFO_FOLDER 
   # Must hard-coded 
   /opt/nepi/ros/share/nepi_apps
 )
 
-install(DIRECTORY launch/
-  DESTINATION ${NEPI_APP_LAUNCH_FOLDER}
+install(DIRECTORY info/
+  DESTINATION ${NEPI_APP_INFO_FOLDER}
 )
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
