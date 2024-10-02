@@ -9,12 +9,21 @@
 #
 
 APP_NAME = 'AI_Targeting' # Use in display menus
-DESCRIPTION = 'Application for advanced targeting of AI detected objects'
-PKG_NAME = 'nepi_app_ai_targeting'
-APP_FILE = 'ai_targeting_app_node.py'
-NODE_NAME = 'app_ai_targeting'
-RUI_FILES = ['NepiAppAiTargeting.js','NepiAppAiTargetingControls.js']
-RUI_MAIN_FILE = "NepiAppAiTargeting.js"
-RUI_MAIN_CLASS = "AiTargetingApp"
-RUI_MENU_NAME = "AI Targeting"
+FILE_TYPE = 'APP'
+APP_DICT = dict(
+    description = 'Application for advanced targeting of AI detected objects',
+    pkg_name = 'nepi_app_ai_targeting',
+    config_file = 'app_ai_targeting.yaml',
+    app_file = 'ai_targeting_app_node.py',
+    node_name = 'app_ai_targeting'
+)
+RUI_DICT = dict(
+    rui_menu_name = "AI Targeting", # RUI menu name or "None" if no rui support
+    rui_files = ['NepiAppAiTargeting.js','NepiAppAiTargetingControls.js'],
+    rui_main_file = "NepiAppAiTargeting.js",
+    rui_main_class = "AiTargetingApp"
+)
+
+
+
 
