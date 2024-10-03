@@ -18,7 +18,6 @@ import { Column, Columns } from "./Columns"
 import Input from "./Input"
 import Select, { Option } from "./Select"
 import Styles from "./Styles"
-import BooleanIndicator from "./BooleanIndicator"
 import Toggle from "react-toggle"
 
 
@@ -323,7 +322,6 @@ class NepiAppAiTargetingControls extends Component {
     const classOPtions = this.getClassOptions()
     const selectedClasses = this.state.selected_classes_list
     const NoneOption = <Option>None</Option>
-    const targeting_running = (this.state.targeting_controls_running !== null)? this.state.targeting_controls_running : false
     return (
       <Section title={"Targeting Controls *** Refresh page after AI running to update ***"}>
 

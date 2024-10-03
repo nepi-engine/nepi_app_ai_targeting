@@ -23,7 +23,7 @@ import { filterStrList, createShortValuesFromNamespaces } from "./Utilities"
 
 import CameraViewer from "./CameraViewer"
 
-import Nepi_IF_SaveData from "./Nepi_IF_SaveData"
+import NepiIFSaveData from "./Nepi_IF_SaveData"
 
 @inject("ros")
 @observer
@@ -86,17 +86,17 @@ class AiTargetingApp extends Component {
     var uniqueNames = createShortValuesFromNamespaces(imageTopicsFiltered)
     const classifier_not_stopped = 
       (this.props.ros.reportedClassifier !== null) && (this.props.ros.reportedClassifier.classifier_state !== "Stopped")
-    for (var i = 0; i < imageTopicsFiltered .length; i++) {
+    for (var i = 0; i < imageTopicsFiltered.length; i++) {
       // Run the filter
-      if (imageFilterDetection && !(imageFilterDetection.test(imageTopicsFiltered [i]))) {
+      if (imageFilterDetection && !(imageFilterDetection.test(imageTopicsFiltered[i]))) {
         continue
       }
       if (classifier_not_stopped) {
         if (imageTopicsFiltered[i] === this.props.ros.reportedClassifier.selected_img_topic) {
-          items.push(<Option selected="selected" value={imageTopicsFiltered [i]}>{uniqueNames[i]}</Option>)
+          items.push(<Option selected="selected" value={imageTopicsFiltered[i]}>{uniqueNames[i]}</Option>)
         }
         else {
-          items.push(<Option value={imageTopicsFiltered [i]}>{uniqueNames[i]}</Option>)
+          items.push(<Option value={imageTopicsFiltered[i]}>{uniqueNames[i]}</Option>)
         }
       }
       else if (imageTopicsFiltered[i] === this.state.imageTopic) {
@@ -169,7 +169,6 @@ class AiTargetingApp extends Component {
     const {
       reportedClassifier,
     } = this.props.ros
-    const sel_img_text = this.state.selectedImgText
     if ((reportedClassifier === null) || (reportedClassifier.classifier_state !== "Running")) {
       if (this.state.currentDisplayImgTopic !== this.state.imageTopic) {
         await this.setState({
@@ -372,7 +371,7 @@ class AiTargetingApp extends Component {
           />
 
           <div hidden={appNamespace === null}>
-            <Nepi_IF_SaveData
+            <NepiIFSaveData
                   saveNamespace={targetingAppNamespace}
                   title={"Nepi_IF_SaveData"}
               />
