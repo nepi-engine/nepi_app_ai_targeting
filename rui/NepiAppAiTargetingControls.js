@@ -68,7 +68,6 @@ class NepiAppAiTargetingControls extends Component {
       targeting_controls_running: false,
       targetingListener: null,
       viewableTopics: false,
-      viewableClasses: false,
 
       output_image_options_list: [],
       selected_output_image: 'targeting_image',
@@ -96,7 +95,6 @@ class NepiAppAiTargetingControls extends Component {
     this.onToggleClassSelection = this.onToggleClassSelection.bind(this)
     this.getClassOptions = this.getClassOptions.bind(this)
     this.toggleViewableTopics = this.toggleViewableTopics.bind(this)
-    this.toggleViewableClasses = this.toggleViewableClasses.bind(this)
     this.sendTransformUpdateMessage = this.sendTransformUpdateMessage.bind(this)
     this.onClickToggleShowTransforms = this.onClickToggleShowTransforms.bind(this)
     this.sendClearTransformUpdateMessage = this.sendClearTransformUpdateMessage.bind(this)
@@ -260,13 +258,6 @@ class NepiAppAiTargetingControls extends Component {
   toggleViewableTopics() {
     const set = !this.state.viewableTopics
     this.setState({viewableTopics: set})
-    this.render()
-  }
-
-  toggleViewableClasses() {
-    const set = !this.state.viewableClasses
-    this.setState({viewableClasses: set})
-    this.render()
   }
 
   // Lifecycle method called just before the component umounts.
@@ -332,67 +323,98 @@ class NepiAppAiTargetingControls extends Component {
     const selectedClasses = this.state.selected_classes_list
     const NoneOption = <Option>None</Option>
     return (
-      <Section title={"Targeting Controls"}>
+      <Section title={"Targeting Controls *** Refresh page after AI running to update ***"}>
+
+      <Columns>
+        <Column>
+
+
+        </Column>
+        <Column>
+
+          <ButtonMenu>
+            <Button onClick={() => sendTriggerMsg( this.props.targetingNamespace + "/reset_app")}>{"Reset App"}</Button>
+          </ButtonMenu>
+
+        </Column>
+        </Columns>
+
+
+
+
 
 
         <Columns>
         <Column>
             <Label title="Select Output Image"> 
+              <Select
+                id="select_output_image"
+                onChange={(event) => onDropdownSelectedSendStr.bind(this)(event, this.props.targetingNamespace + "/set_output_image")}
+                value={this.state.selected_output_image}
+              >
+                {this.state.output_image_options_list
+                  ? createMenuListFromStrList(this.state.output_image_options_list, false, [],[],[])
+                  : NoneOption}
+              </Select>
             </Label>
-          
-            <div onClick={this.toggleViewableTopics} style={{backgroundColor: Styles.vars.colors.grey0}}>
-              <Select style={{width: "10px"}}/>
-            </div>
-              id="select_output_image"
-              onChange={(event) => onDropdownSelectedSendStr.bind(this)(event, this.props.targetingNamespace + "/set_output_image")}
-              value={this.state.selected_output_image}
-            >
-              {this.state.output_image_options_list
-                ? createMenuListFromStrList(this.state.output_image_options_list, false, [],[],[])
-                : NoneOption}
-            </Select>
-
-            <Label title="Select Class Filter"> </Label>
-
-            <div onClick={this.toggleViewableClasses} style={{backgroundColor: Styles.vars.colors.grey0}}>
-              <Select style={{width: "10px"}}/>
-            </div>
-            <div hidden={this.state.viewableClasses === false}>
-            {classOPtions.map((Class) =>
-            <div onClick={this.onToggleClassSelection}
-              style={{
-                textAlign: "center",
-                padding: `${Styles.vars.spacing.xs}`,
-                color: Styles.vars.colors.black,
-                backgroundColor: (selectedClasses.includes(Class.props.value))? Styles.vars.colors.blue : Styles.vars.colors.grey0,
-                cursor: "pointer",
-                }}>
-                <body class_name ={Class} style={{color: Styles.vars.colors.black}}>{Class}</body>
-            </div>
-            )}
-            </div>
-
-
-
-            <Label title="Select Target Filter"> </Label>
-
-            <Select
-              id="select_target"
-              onChange={(event) => onDropdownSelectedSendStr.bind(this)(event, this.props.targetingNamespace + "/select_target")}
-              value={this.state.selected_target}
-            >
-              {this.state.available_targets_list
-                ? createMenuListFromStrList(this.state.available_targets_list, false, [],[],[])
-                : NoneOption}
-            </Select>
-
 
           </Column>
           <Column>
 
-          <ButtonMenu>
-            <Button onClick={() => sendTriggerMsg( this.props.targetingNamespace + "/reset_app")}>{"Reset App"}</Button>
-          </ButtonMenu>
+          </Column>
+          </Columns>
+      
+
+
+
+
+
+
+
+            <Columns>
+            <Column>
+
+            <Label title="Select Class Filter"> </Label>
+
+                    <div onClick={this.toggleViewableTopics} style={{backgroundColor: Styles.vars.colors.grey0}}>
+                      <Select style={{width: "10px"}}/>
+                    </div>
+                    <div hidden={this.state.viewableTopics === false}>
+                    {classOPtions.map((Class) =>
+                    <div onClick={this.onToggleClassSelection}
+                      style={{
+                        textAlign: "center",
+                        padding: `${Styles.vars.spacing.xs}`,
+                        color: Styles.vars.colors.black,
+                        backgroundColor: (selectedClasses.includes(Class.props.value))? Styles.vars.colors.blue : Styles.vars.colors.grey0,
+                        cursor: "pointer",
+                        }}>
+                        <body class_name ={Class} style={{color: Styles.vars.colors.black}}>{Class}</body>
+                    </div>
+                    )}
+                    </div>
+
+
+
+                    <Label title="Select Target Filter"> </Label>
+
+                    <Select
+                      id="select_target"
+                      onChange={(event) => onDropdownSelectedSendStr.bind(this)(event, this.props.targetingNamespace + "/select_target")}
+                      value={this.state.selected_target}
+                    >
+                      {this.state.available_targets_list
+                        ? createMenuListFromStrList(this.state.available_targets_list, false, [],[],[])
+                        : NoneOption}
+                    </Select>
+
+
+              </Column>
+              <Column>
+
+
+              </Column>
+              </Columns>
 
 
 
@@ -460,8 +482,6 @@ class NepiAppAiTargetingControls extends Component {
 
 
 
-      </Column>
-      </Columns>
 
 
 
@@ -480,6 +500,10 @@ class NepiAppAiTargetingControls extends Component {
 
     </Column>
     </Columns>
+
+
+
+
 
 
     <div hidden={ this.state.showTransforms === false}>
