@@ -346,12 +346,8 @@ class NepiAppAiTargetingControls extends Component {
 
         <Columns>
         <Column>
-<<<<<<< HEAD
-            <Label title="Select Output Image"> 
-=======
         
         <Label title="Select Output Image"> 
->>>>>>> 5044dd0
               <Select
                 id="select_output_image"
                 onChange={(event) => onDropdownSelectedSendStr.bind(this)(event, this.props.targetingNamespace + "/set_output_image")}
@@ -362,25 +358,6 @@ class NepiAppAiTargetingControls extends Component {
                   : NoneOption}
               </Select>
             </Label>
-<<<<<<< HEAD
-
-          </Column>
-          <Column>
-
-          </Column>
-          </Columns>
-      
-
-
-
-
-
-
-
-            <Columns>
-            <Column>
-=======
->>>>>>> 5044dd0
 
             <Label title="Select Class Filter"> </Label>
 
