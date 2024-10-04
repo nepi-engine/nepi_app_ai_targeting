@@ -337,6 +337,8 @@ class AiTargetingApp extends Component {
       render() {
         const appNamespace = this.getAppNamespace()
         const targetingAppNamespace = appNamespace ? appNamespace.replace("ai_detector_mgr", "app_ai_targeting" ): appNamespace
+        const classifier_running = ((this.props.ros.reportedClassifier) && (this.props.ros.reportedClassifier.classifier_state === "Running"))?
+        true : false
         return (
 
 
@@ -384,7 +386,7 @@ class AiTargetingApp extends Component {
           {this.renderAIManager()}    
 
 
-          <div hidden={appNamespace === null}>
+          <div hidden={targetingAppNamespace === null || classifier_running === false}>
 
           <NepiAppAiTargetingControls
           targetingNamespace = {targetingAppNamespace}
