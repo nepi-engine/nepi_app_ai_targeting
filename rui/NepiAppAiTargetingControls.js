@@ -337,20 +337,18 @@ class NepiAppAiTargetingControls extends Component {
 
         <Columns>
         <Column>
-            <Label title="Select Output Image"> 
+        
+        <Label title="Select Output Image"> 
+              <Select
+                id="select_output_image"
+                onChange={(event) => onDropdownSelectedSendStr.bind(this)(event, this.props.targetingNamespace + "/set_output_image")}
+                value={this.state.selected_output_image}
+              >
+                {this.state.output_image_options_list
+                  ? createMenuListFromStrList(this.state.output_image_options_list, false, [],[],[])
+                  : NoneOption}
+              </Select>
             </Label>
-          
-            <div onClick={this.toggleViewableTopics} style={{backgroundColor: Styles.vars.colors.grey0}}>
-              <Select style={{width: "10px"}}/>
-            </div>
-              id="select_output_image"
-              onChange={(event) => onDropdownSelectedSendStr.bind(this)(event, this.props.targetingNamespace + "/set_output_image")}
-              value={this.state.selected_output_image}
-            >
-              {this.state.output_image_options_list
-                ? createMenuListFromStrList(this.state.output_image_options_list, false, [],[],[])
-                : NoneOption}
-            </Select>
 
             <Label title="Select Class Filter"> </Label>
 
