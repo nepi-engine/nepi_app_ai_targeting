@@ -113,12 +113,15 @@ class AiTargetingApp extends Component {
   createImageClassifierOptions() {
     var items = []
     items.push(<Option>{"None"}</Option>)
-    const { classifiers } = this.props.ros
-    for (var i = 0; i < classifiers.length; i++) {
-      if((this.props.ros.reportedClassifier !== null) && (classifiers[i] === this.props.ros.reportedClassifier.selected_classifier)) {
-        items.push(<Option selected="selected" value={classifiers[i]}>{classifiers[i]}</Option>)
-      }else {
-        items.push(<Option value={classifiers[i]}>{classifiers[i]}</Option>)
+    const { classifierLists } = this.props.ros
+    if (classifierLists){
+      const classifiers = classifierLists.models
+      for (var i = 0; i < classifiers.length; i++) {
+        if((this.props.ros.reportedClassifier !== null) && (classifiers[i] === this.props.ros.reportedClassifier.selected_classifier)) {
+          items.push(<Option selected="selected" value={classifiers[i]}>{classifiers[i]}</Option>)
+        }else {
+          items.push(<Option value={classifiers[i]}>{classifiers[i]}</Option>)
+        }
       }
     }
     return items
