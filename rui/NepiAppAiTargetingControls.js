@@ -65,7 +65,6 @@ class NepiAppAiTargetingControls extends Component {
       lost_targets_list: [],
       
       
-      targeting_controls_running: false,
       targetingListener: null,
       viewableTopics: false,
 
@@ -85,8 +84,9 @@ class NepiAppAiTargetingControls extends Component {
       update_transform: false,
 
 
-      connected: false
 
+      connected: false,
+      needs_update: true
 
     }
   
@@ -107,7 +107,6 @@ class NepiAppAiTargetingControls extends Component {
   targetingListenerFunc(message) {
     const avail_classes_str_list = convertStrToStrList(message.available_classes_list)
     this.setState({
-    targeting_controls_running: message.targeting_running,
     classifier_name: message.classifier_name,
     classifier_state: message.classifier_state,
     image_topic: message.image_topic,
@@ -162,21 +161,49 @@ class NepiAppAiTargetingControls extends Component {
     if (last_classes_list !== avail_classes_str_list){
       this.render()
     }
-
-
   }
 
-  setupStatusListener(namespace, msg_type, callback) {
-    if (namespace) {
-      return this.addListener({
-        name: namespace,
-        messageType: msg_type,
-        noPrefix: true,
-        callback: callback,
-        manageListener: false
+    // Function for configuring and subscribing to Status
+    updatetargetingListenerFunc() {
+      const statusNamespace = this.props.targetingNamespace + '/status'
+      if (this.state.targetingListener) {
+        this.state.targetingListener.unsubscribe()
+      }
+      var targetingListener = this.props.ros.setupStatusListener(
+            statusNamespace,
+            "nepi_app_ai_targeting/AiTargetingStatus",
+            this.targetingListenerFunc
+          )
+      this.setState({ 
+        targetingListener: targetingListener,
+        needs_update: false
       })
     }
+
+  // Lifecycle method called when compnent updates.
+  // Used to track changes in the topic
+  componentDidUpdate(prevProps, prevState, snapshot) {
+    const { targetingNamespace } = this.props
+    const namespace_updated = (prevProps.targetingNamespace !== targetingNamespace && targetingNamespace !== null)
+    const needs_update = (this.state.needs_update && targetingNamespace !== null)
+    if (namespace_updated || needs_update) {
+      if (targetingNamespace.indexOf('null') === -1){
+        this.updatetargetingListenerFunc()
+        this.render()
+      } 
+    }
   }
+
+
+  // Lifecycle method called just before the component umounts.
+  // Used to unsubscribe to Status message
+  componentWillUnmount() {
+    if (this.state.targetingListener) {
+      this.state.targetingListener.unsubscribe()
+    }
+  }
+
+
 
   settransform(event){
     const pointcloud = event.target.value
@@ -229,61 +256,30 @@ class NepiAppAiTargetingControls extends Component {
     })
   }
 
-  // Function for configuring and subscribing to Status
-  updatetargetingListenerFunc() {
-    const statusNamespace = this.props.targetingNamespace + '/status'
-    if (this.state.targetingListener) {
-      this.state.targetingListener.unsubscribe()
+
+
+
+
+
+  // Function for creating image topic options.
+  getClassOptions() {
+  const classesList = this.state.available_classes_list
+  var items = []
+  items.push(<Option>{"None"}</Option>)
+  items.push(<Option>{"All"}</Option>)
+  if (classesList){
+    for (var i = 0; i < classesList.length; i++) {
+        items.push(<Option value={classesList[i]}>{classesList[i]}</Option>)
     }
-    var targetingListener = this.props.ros.setupStatusListener(
-          statusNamespace,
-          "nepi_app_ai_targeting/AiTargetingStatus",
-          this.targetingListenerFunc
-        )
-    this.setState({ targetingListener: targetingListener})
+  }
+  return items
   }
 
-  // Lifecycle method called when compnent updates.
-  // Used to track changes in the topic
-  componentDidUpdate(prevProps, prevState, snapshot) {
-    const { targetingNamespace } = this.props
-    if (prevProps.targetingNamespace !== targetingNamespace && targetingNamespace !== null) {
-      if (targetingNamespace.indexOf('null') === -1){
-        this.updatetargetingListenerFunc()
-        this.render()
-      } 
-    }
-  }
 
   toggleViewableTopics() {
     const set = !this.state.viewableTopics
     this.setState({viewableTopics: set})
   }
-
-  // Lifecycle method called just before the component umounts.
-  // Used to unsubscribe to Status message
-  componentWillUnmount() {
-    if (this.state.targetingListener) {
-      this.state.targetingListener.unsubscribe()
-    }
-  }
-
-
-   // Function for creating image topic options.
-   getClassOptions() {
-    const classesList = this.state.available_classes_list
-    var items = []
-    items.push(<Option>{"None"}</Option>)
-    items.push(<Option>{"All"}</Option>)
-    if (classesList){
-      for (var i = 0; i < classesList.length; i++) {
-          items.push(<Option value={classesList[i]}>{classesList[i]}</Option>)
-      }
-    }
-    return items
-    }
-  
-  
 
 
   onToggleClassSelection(event){
@@ -324,24 +320,6 @@ class NepiAppAiTargetingControls extends Component {
     const NoneOption = <Option>None</Option>
     return (
       <Section title={"Targeting Controls *** Refresh page after AI running to update ***"}>
-
-      <Columns>
-        <Column>
-
-
-        </Column>
-        <Column>
-
-          <ButtonMenu>
-            <Button onClick={() => sendTriggerMsg( this.props.targetingNamespace + "/reset_app")}>{"Reset App"}</Button>
-          </ButtonMenu>
-
-        </Column>
-        </Columns>
-
-
-
-
 
 
         <Columns>
@@ -397,6 +375,9 @@ class NepiAppAiTargetingControls extends Component {
               </Column>
               <Column>
 
+              <ButtonMenu>
+            <Button onClick={() => sendTriggerMsg( this.props.targetingNamespace + "/reset_app")}>{"Reset App"}</Button>
+          </ButtonMenu>
 
               </Column>
               </Columns>
