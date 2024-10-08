@@ -379,6 +379,15 @@ class NepiAppAiTargetingControls extends Component {
             <Button onClick={() => sendTriggerMsg( this.props.targetingNamespace + "/reset_app")}>{"Reset App"}</Button>
           </ButtonMenu>
 
+            <ButtonMenu>
+              <Button onClick={() => sendTriggerMsg(this.props.targetingNamespace + "/save_config")}>{"Save Config"}</Button>
+        </ButtonMenu>
+
+        <ButtonMenu>
+              <Button onClick={() => sendTriggerMsg( this.props.targetingNamespace + "/reset_config")}>{"Reset Config"}</Button>
+        </ButtonMenu>
+
+
               </Column>
               </Columns>
 
@@ -558,23 +567,6 @@ class NepiAppAiTargetingControls extends Component {
 
       </div>
 
-
-      <Columns>
-      <Column>
-
-      <ButtonMenu>
-            <Button onClick={() => sendTriggerMsg(this.props.targetingNamespace + "/save_config")}>{"Save Config"}</Button>
-      </ButtonMenu>
-
-      </Column>
-      <Column>
-
-      <ButtonMenu>
-            <Button onClick={() => sendTriggerMsg( this.props.targetingNamespace + "/reset_config")}>{"Reset Config"}</Button>
-      </ButtonMenu>
-
-       </Column>
-      </Columns>
 
 
       </Section>
