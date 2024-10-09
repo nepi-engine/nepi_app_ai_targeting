@@ -201,7 +201,7 @@ class NepiAiTargetingApp(object):
     target_min_px_ratio_sub = rospy.Subscriber("~set_target_min_px_ratio", Float32, self.setTargetMinPxRatioCb, queue_size = 10)
     age_filter_sub = rospy.Subscriber("~set_age_filter", Float32, self.setAgeFilterCb, queue_size = 10)
     rospy.Subscriber('~set_frame_3d_transform', Frame3DTransform, self.setFrame3dTransformCb, queue_size=1)
-    rospy.Subscriber('~clear_frame_3d_transform', Bool, self.clearFrame3dTransformCb, queue_size=1)
+    rospy.Subscriber('~clear_frame_3d_transform', Empty, self.clearFrame3dTransformCb, queue_size=1)
 
     # Start an AI manager status monitoring thread
     AI_MGR_STATUS_SERVICE_NAME = NEPI_BASE_NAMESPACE + "ai_detector_mgr/img_classifier_status_query"
