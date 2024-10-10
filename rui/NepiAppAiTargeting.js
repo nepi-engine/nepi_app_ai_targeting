@@ -82,7 +82,7 @@ class AiTargetingApp extends Component {
     var items = []
     items.push(<Option>{"None"}</Option>)
     const { imageTopics } = this.props.ros
-    const imageTopicsFiltered = filterStrList(imageTopics,['zed_node','app_ai_targeting'])
+    const imageTopicsFiltered = filterStrList(imageTopics,['zed_node','app_ai_targeting','ai_detector_manager'])
     var uniqueNames = createShortValuesFromNamespaces(imageTopicsFiltered)
     const classifier_not_stopped = 
       (this.props.ros.reportedClassifier !== null) && (this.props.ros.reportedClassifier.classifier_state !== "Stopped")
