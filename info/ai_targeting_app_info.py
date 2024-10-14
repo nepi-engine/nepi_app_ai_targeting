@@ -13,6 +13,7 @@ FILE_TYPE = 'APP'
 APP_DICT = dict(
     description = 'Application for advanced targeting of AI detected objects',
     pkg_name = 'nepi_app_ai_targeting',
+    group_name = 'AI',
     config_file = 'app_ai_targeting.yaml',
     app_file = 'ai_targeting_app_node.py',
     node_name = 'app_ai_targeting'

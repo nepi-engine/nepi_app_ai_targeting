@@ -28,6 +28,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from nepi_edge_sdk_base import nepi_ros
+from nepi_edge_sdk_base import nepi_save
 from nepi_edge_sdk_base import nepi_msg
 from nepi_edge_sdk_base import nepi_pc 
 from nepi_edge_sdk_base import nepi_img 
@@ -43,23 +44,20 @@ from nepi_ros_interfaces.msg import ClassifierSelection,  \
                                     StringArray, TargetLocalization, TargetLocalizations
 from nepi_ros_interfaces.srv import ImageClassifierStatusQuery, ImageClassifierStatusQueryRequest
 from nepi_ros_interfaces.msg import Frame3DTransform
+from nepi_app_ai_targeting.msg import AiTargetingStatus, AiTargetingTargets
+
 from nepi_edge_sdk_base.save_data_if import SaveDataIF
 from nepi_edge_sdk_base.save_cfg_if import SaveCfgIF
-from nepi_app_ai_targeting.msg import AiTargetingStatus
 
 # Do this at the end
 #from scipy.signal import find_peaks
-
-
-NEPI_BASE_NAMESPACE = nepi_ros.get_base_namespace()
-
-#########################################
 
 #########################################
 # Node Class
 #########################################
 
 class NepiAiTargetingApp(object):
+  AI_MANAGER_NODE_NAME = "ai_detector_mgr"
 
   #Set Initial Values
   FACTORY_FOV_VERT_DEG=70 # Camera Vertical Field of View (FOV)
@@ -71,7 +69,7 @@ class NepiAiTargetingApp(object):
   FACTORY_TARGET_MIN_DIST_METERS=0.0 # Sets the minimum distance between to detections, closer target is selected
   FACTORY_TARGET_MAX_AGE_SEC=10 # Remove lost targets from dictionary if older than this age
 
-  FACTORY_OUTPUT_IMAGE = "targeting_image"
+  FACTORY_OUTPUT_IMAGE = "Targeting_Image"
 
   ZERO_TRANSFORM = [0,0,0,0,0,0,0]
 
@@ -92,8 +90,8 @@ class NepiAiTargetingApp(object):
 
 
   targeting_running = False
-  data_products = ["image",'targeting_image_depth',"detection_boxes","targeting_boxes_2d","targeting_boxes_3d","targeting_localizations"]
-  output_image_options = ["detection_image","alert_image","targeting_image"]
+  data_products = ["targeting_image",'targeting_image_depth',"targeting_boxes_2d","targeting_boxes_3d","targeting_localizations"]
+  output_image_options = ["None","Targeting_Image","Alert_Image"]
   
   current_classifier = "None"
   current_classifier_state = "None"
@@ -145,6 +143,8 @@ class NepiAiTargetingApp(object):
   #has_subscribers_detect_img = False
   has_subscribers_target_img = False
 
+  classifier_running = False
+
   #######################
   ### Node Initialization
   DEFAULT_NODE_NAME = "ai_targeting_app" # Can be overwitten by luanch command
@@ -156,17 +156,22 @@ class NepiAiTargetingApp(object):
     nepi_msg.createMsgPublishers(self)
     nepi_msg.publishMsgInfo(self,"Starting Initialization Processes")
     ##############################
-   
+    self.ai_mgr_namespace = self.base_namespace + self.AI_MANAGER_NODE_NAME
+    
     self.initParamServerValues(do_updates = False)
     self.resetParamServer(do_updates = False)
    
+    # Message Image to publish when detector not running
+    message = "WAITING FOR AI DETECTOR TO START"
+    cv2_img = nepi_img.create_message_image(message)
+    self.ros_message_img = nepi_img.cv2img_to_rosimg(cv2_img)
 
     # Set up save data and save config services ########################################################
     factory_data_rates= {}
     for d in self.data_products:
         factory_data_rates[d] = [0.0, 0.0, 100.0] # Default to 0Hz save rate, set last save = 0.0, max rate = 100.0Hz
-    if 'detection_image' in self.data_products:
-        factory_data_rates['detection_image'] = [1.0, 0.0, 100.0] 
+    if 'targeting_image' in self.data_products:
+        factory_data_rates['targeting_image'] = [1.0, 0.0, 100.0] 
     self.save_data_if = SaveDataIF(data_product_names = self.data_products, factory_data_rate_dict = factory_data_rates)
     # Temp Fix until added as NEPI ROS Node
     self.save_cfg_if = SaveCfgIF(updateParamsCallback=self.initParamServerValues, 
@@ -180,14 +185,15 @@ class NepiAiTargetingApp(object):
     # AI Management Scubscirbers and publishers
   
     rospy.Subscriber('~start_classifier', ClassifierSelection, self.startClassifierCb)
-    self.start_classifier_pub = rospy.Publisher(NEPI_BASE_NAMESPACE + "ai_detector_mgr/start_classifier", ClassifierSelection, queue_size=1)
+    self.start_classifier_pub = rospy.Publisher(self.ai_mgr_namespace  + "/start_classifier", ClassifierSelection, queue_size=1)
     rospy.Subscriber('~stop_classifier', Empty, self.stopClassifierCb)
-    self.stop_classifier_pub = rospy.Publisher(NEPI_BASE_NAMESPACE + "ai_detector_mgr/stop_classifier", Empty, queue_size=1)
+    self.stop_classifier_pub = rospy.Publisher(self.ai_mgr_namespace  + "/stop_classifier", Empty, queue_size=1)
     rospy.Subscriber('~set_threshold', Float32, self.setThresholdCb) 
-    self.set_threshold_pub = rospy.Publisher(NEPI_BASE_NAMESPACE + "ai_detector_mgr/set_threshold", Float32, queue_size=1)
+    self.set_threshold_pub = rospy.Publisher(self.ai_mgr_namespace  + "/set_threshold", Float32, queue_size=1)
 
     # App Specific Subscribers
-    sel_image_sub = rospy.Subscriber('~set_output_image', String, self.selectImageCb, queue_size = 10)
+    set_image_input_sub = rospy.Subscriber('~use_live_image', Bool, self.setImageLiveCb, queue_size = 10)
+    sel_image_output_sub = rospy.Subscriber('~set_output_image', String, self.selectImageCb, queue_size = 10)
     add_all_sub = rospy.Subscriber('~add_all_target_classes', Empty, self.addAllClassesCb, queue_size = 10)
     remove_all_sub = rospy.Subscriber('~remove_all_target_classes', Empty, self.removeAllClassesCb, queue_size = 10)
     add_class_sub = rospy.Subscriber('~add_target_class', String, self.addClassCb, queue_size = 10)
@@ -204,36 +210,37 @@ class NepiAiTargetingApp(object):
     rospy.Subscriber('~clear_frame_3d_transform', Empty, self.clearFrame3dTransformCb, queue_size=1)
 
     # Start an AI manager status monitoring thread
-    AI_MGR_STATUS_SERVICE_NAME = NEPI_BASE_NAMESPACE + "ai_detector_mgr/img_classifier_status_query"
+    AI_MGR_STATUS_SERVICE_NAME = self.ai_mgr_namespace  + "/img_classifier_status_query"
     self.get_ai_mgr_status_service = rospy.ServiceProxy(AI_MGR_STATUS_SERVICE_NAME, ImageClassifierStatusQuery)
     time.sleep(1)
     rospy.Timer(rospy.Duration(1), self.updaterCb)
 
     # Start AI Manager Subscribers
-    FOUND_OBJECT_TOPIC = NEPI_BASE_NAMESPACE + "ai_detector_mgr/found_object"
+    FOUND_OBJECT_TOPIC = self.ai_mgr_namespace  + "/found_object"
     rospy.Subscriber(FOUND_OBJECT_TOPIC, ObjectCount, self.found_object_callback, queue_size = 1)
-    BOUNDING_BOXES_TOPIC = NEPI_BASE_NAMESPACE + "ai_detector_mgr/bounding_boxes"
+    BOUNDING_BOXES_TOPIC = self.ai_mgr_namespace  + "/bounding_boxes"
     rospy.Subscriber(BOUNDING_BOXES_TOPIC, BoundingBoxes, self.object_detected_callback, queue_size = 1)
-    DETECTION_IMAGE_TOPIC = NEPI_BASE_NAMESPACE + "ai_detector_mgr/detection_image"
-    rospy.Subscriber(DETECTION_IMAGE_TOPIC, Image, self.detectionImageCb, queue_size = 1)
 
     #self.detection_targeting_image_pub = rospy.Publisher("~detection_image",Image,queue_size=1)
     # Setup Node Publishers
     self.status_pub = rospy.Publisher("~status", AiTargetingStatus, queue_size=1, latch=True)
+    self.targets_pub = rospy.Publisher("~targets", AiTargetingTargets, queue_size=1, latch=True)
     self.targeting_boxes_2d_pub = rospy.Publisher("~targeting_boxes_2d", BoundingBoxes, queue_size=1)
     self.targeting_boxes_3d_pub = rospy.Publisher("~targeting_boxes_3d", BoundingBoxes3D, queue_size=1)
     self.target_localizations_pub = rospy.Publisher("~targeting_localizations", TargetLocalizations, queue_size=1)
     self.alert_status_pub = rospy.Publisher("~alert_status",Bool,queue_size=1)
     self.alert_trigger_pub = rospy.Publisher("~alert_trigger",Bool,queue_size=1)
-    #self.detection_image_pub = rospy.Publisher("~detection_image",Image,queue_size=1)
-    self.targeting_image_pub = rospy.Publisher("~image",Image,queue_size=1)
+    self.targeting_image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1, latch = True)
 
     rospy.Timer(rospy.Duration(1), self.updateHasSubscribersThread)
 
     time.sleep(1)
+
+
     ## Initiation Complete
     nepi_msg.publishMsgInfo(self," Initialization Complete")
     self.publish_status()
+    self.publish_targets()
 
     # Spin forever (until object is detected)
     rospy.spin()
@@ -249,6 +256,7 @@ class NepiAiTargetingApp(object):
 
   def resetApp(self):
     rospy.set_param('~last_classifier', "")
+    rospy.set_param('~use_live_image',True)
     rospy.set_param('~selected_output_image', self.FACTORY_OUTPUT_IMAGE)
     rospy.set_param('~selected_classes_dict', dict())
     rospy.set_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
@@ -279,6 +287,7 @@ class NepiAiTargetingApp(object):
   def initParamServerValues(self,do_updates = True):
       nepi_msg.publishMsgInfo(self," Setting init values to param values")
       self.init_last_classifier = rospy.get_param("~last_classifier", "")
+      self.init_use_live_image = rospy.get_param('~use_live_image',True)
       self.init_selected_output_image = rospy.get_param('~selected_output_image', self.FACTORY_OUTPUT_IMAGE)
       self.init_selected_classes_dict = rospy.get_param('~selected_classes_dict', dict())
       self.init_image_fov_vert = rospy.get_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
@@ -294,6 +303,7 @@ class NepiAiTargetingApp(object):
 
   def resetParamServer(self,do_updates = True):
       rospy.set_param('~last_classiier', self.init_last_classifier)
+      rospy.get_param('~use_live_image',self.init_use_live_image)
       rospy.set_param('~selected_output_image', self.init_selected_output_image)
       rospy.set_param('~selected_classes_dict', self.init_selected_classes_dict)
       rospy.set_param('~image_fov_vert',  self.init_image_fov_vert)
@@ -328,6 +338,16 @@ class NepiAiTargetingApp(object):
 
   ###################
   ## AI App Callbacks
+
+  def setImageLiveCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    live = msg.data
+    current_live = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
+    if live != current_live:
+      self.last_image_topic = None # Will force resubscribe later
+      rospy.set_param('~selected_output_image', image_name)
+      nepi_ros.set_param(self,'~use_live_image',live)
+    self.publish_status()
 
 
   def selectImageCb(self,msg):
@@ -378,7 +398,7 @@ class NepiAiTargetingApp(object):
     target_name = msg.data
     if target_name == 'All' or target_name in self.current_targets_dict.keys():
       self.selected_target = target_name
-    self.publish_status()
+    self.publish_targets()
 
   def setVertFovCb(self,msg):
     ##nepi_msg.publishMsgInfo(self,msg)
@@ -496,7 +516,6 @@ class NepiAiTargetingApp(object):
     ros_timestamp = bounding_boxes_msg.header.stamp
     image_seq_num = bounding_boxes_msg.header.seq
     self.detect_boxes_msg=bounding_boxes_msg
-    self.save_data2file('ai_detector_mgr','detection_boxes',bounding_boxes_msg,ros_timestamp)
     transform = rospy.get_param('~frame_3d_transform', self.init_frame_3d_transform)
     selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
     alert_classes = list(selected_classes_dict.keys())
@@ -803,7 +822,7 @@ class NepiAiTargetingApp(object):
 
     self.active_targets_dict = active_targets_dict
     if current_targets_dict.keys() != self.current_targets_dict.keys():
-        self.publish_status()
+        self.publish_targets()
     self.current_targets_dict = current_targets_dict
     #nepi_msg.publishMsgWarn(self,self.current_targets_dict)
 
@@ -813,7 +832,7 @@ class NepiAiTargetingApp(object):
       if not rospy.is_shutdown():
         self.targeting_boxes_2d_pub.publish(detect_boxes_msg)
       # Save Data if it is time.
-      self.save_data2file('ai_targeting_app',"targeting_boxes_2d",detect_boxes_msg,ros_timestamp)
+      nepi_save.save_data2file(self,"targeting_boxes_2d",detect_boxes_msg,ros_timestamp)
 
     # Publish and Save Target Localizations
     if len(tls) > 0:
@@ -824,10 +843,11 @@ class NepiAiTargetingApp(object):
       target_locs_msg.depth_topic = self.depth_map_topic
       target_locs_msg.depth_header = self.depth_map_header
       target_locs_msg.target_localizations = tls
+
       if not rospy.is_shutdown():
         self.target_localizations_pub.publish(target_locs_msg)
       # Save Data if Time
-      self.save_data2file('ai_targeting_app','targeting_localizations',target_locs_msg,ros_timestamp)
+      nepi_save.save_data2file(self,'targeting_localizations',target_locs_msg,ros_timestamp)
 
     # Publish and Save 3D Bounding Boxes
     self.targeting_box_3d_list = bbs3d
@@ -844,7 +864,7 @@ class NepiAiTargetingApp(object):
       if not rospy.is_shutdown():
         self.targeting_boxes_3d_pub.publish(targeting_boxes_3d_msg)
       # Save Data if Time
-      self.save_data2file('ai_targeting_app','targeting_boxes_3d',targeting_boxes_3d_msg,ros_timestamp)
+      nepi_save.save_data2file(self,'targeting_boxes_3d',targeting_boxes_3d_msg,ros_timestamp)
 
   def updaterCb(self,timer):
     # Update status info from detector
@@ -873,7 +893,7 @@ class NepiAiTargetingApp(object):
         update_status = True
     self.active_targets_dict = active_targets_dict
     self.lost_targets_dict = lost_targets_dict
-
+    self.publish_targets()
     try:
       ai_mgr_status_response = self.get_ai_mgr_status_service()
     except Exception as e:
@@ -884,6 +904,7 @@ class NepiAiTargetingApp(object):
     self.current_image_topic = ai_mgr_status_response.selected_img_topic
     self.current_classifier = ai_mgr_status_response.selected_classifier
     self.current_classifier_state = ai_mgr_status_response.classifier_state
+    self.classifier_running = self.current_classifier_state == "Running"
     classes_string = ai_mgr_status_response.selected_classifier_classes
     classes_list = nepi_ros.parse_string_list_msg_data(classes_string)
     if classes_list != self.classes_list:
@@ -914,57 +935,62 @@ class NepiAiTargetingApp(object):
     rospy.set_param('~selected_classes_dict', selected_classes_dict)
     rospy.set_param('~last_classiier', self.current_classifier)
     #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
-    if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None"):
-      image_topic = nepi_ros.find_topic(self.current_image_topic)
-      nepi_msg.publishMsgInfo(self," Got detect image update topic update : " + image_topic)
-      update_status = True
-      if image_topic != "":
-        self.current_image_topic = image_topic
-        self.targeting_running = True
+    if self.classifier_running:
+      if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None"):
+        use_live_image = nepi_ros.get_param(self,"~use_live_image",self.init_use_live_image)
+        image_topic = ""
+        if use_live_image:
+          image_topic = nepi_ros.find_topic(self.current_image_topic)
+        if image_topic == "":
+          source_topic = AI_MGR_STATUS_SERVICE_NAME = self.ai_mgr_namespace  + "/source_image"
+          image_topic = nepi_ros.find_topic(source_topic)
+        nepi_msg.publishMsgInfo(self," Got detect image update topic update : " + image_topic)
         update_status = True
-        if self.image_sub != None:
-          nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + image_topic)
-          self.image_sub.unregister()
-          self.image_sub = None
-        time.sleep(1)
-        if self.targeting_image_pub is None:
-          #nepi_msg.publishMsgWarn(self," Creating Image publisher ")
-          self.targeting_image_pub = rospy.Publisher("~image",Image,queue_size=1)
-          time.sleep(1)
-        nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
-        self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 1)
-        
-      
-        # Look for Depth Map
-        depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
-        depth_map_topic = nepi_ros.find_topic(depth_map_topic)
-        if depth_map_topic == "":
-          depth_map_topic = "None"
-          self.has_depth_map = False
-        else:
-          self.has_depth_map = True
-        self.depth_map_topic = depth_map_topic
-        #nepi_msg.publishMsgWarn(self,self.depth_map_topic)
-        if depth_map_topic != "None":
-          if self.depth_map_sub != None:
-            self.depth_map_sub.unregister()
-            self.depth_map_sub = None
-            time.sleep(1)
-          nepi_msg.publishMsgInfo(self," Subscribing to Depth Map topic : " + depth_map_topic)
-          self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
+        if image_topic != "":
+          self.current_image_topic = image_topic
+          self.targeting_running = True
           update_status = True
-          # If there is a depth_map, check for pointdcloud
-          pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
-          pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
-          if pointcloud_topic == "":
-            pointcloud_topic = "None"
-            self.has_pointcloud = False
-          else:
-            self.has_pointcloud = True
-          self.pointcloud_topic = pointcloud_topic
-                  
+          if self.image_sub != None:
+            nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + image_topic)
+            self.image_sub.unregister()
+            self.image_sub = None
+          time.sleep(1)
+          if self.targeting_image_pub is None:
+            #nepi_msg.publishMsgWarn(self," Creating Image publisher ")
+            self.targeting_image_pub = rospy.Publisher("~image",Image,queue_size=1)
+            time.sleep(1)
+          nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
 
-    elif self.current_image_topic == "None" or self.current_image_topic == "":  # Turn off targeting subscribers and reset last image topic
+          self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 1)
+      
+          # Look for Depth Map
+          depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
+          depth_map_topic = nepi_ros.find_topic(depth_map_topic)
+          if depth_map_topic == "":
+            depth_map_topic = "None"
+            self.has_depth_map = False
+          else:
+            self.has_depth_map = True
+          self.depth_map_topic = depth_map_topic
+          #nepi_msg.publishMsgWarn(self,self.depth_map_topic)
+          if depth_map_topic != "None":
+            if self.depth_map_sub != None:
+              self.depth_map_sub.unregister()
+              self.depth_map_sub = None
+              time.sleep(1)
+            nepi_msg.publishMsgInfo(self," Subscribing to Depth Map topic : " + depth_map_topic)
+            self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
+            update_status = True
+            # If there is a depth_map, check for pointdcloud
+            pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
+            pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
+            if pointcloud_topic == "":
+              pointcloud_topic = "None"
+              self.has_pointcloud = False
+            else:
+              self.has_pointcloud = True
+            self.pointcloud_topic = pointcloud_topic
+    elif self.classifier_running == False or self.current_image_topic == "None" or self.current_image_topic == "":  # Turn off targeting subscribers and reset last image topic
       self.targeting_running = False
       self.current_targets_dict = dict()
       if self.image_sub != None:
@@ -981,6 +1007,14 @@ class NepiAiTargetingApp(object):
       update_status = True
       time.sleep(1)
 
+    # Publish warning image if not running
+    if self.classifier_running == False or self.image_sub == None:
+      self.ros_message_img.header.stamp = nepi_ros.time_now()
+      self.targeting_image_pub.publish(self.ros_message_img)
+
+
+
+    # Save last image topic for next check
     self.last_image_topic = self.current_image_topic
     if update_status == True:
       self.publish_status()
@@ -988,36 +1022,19 @@ class NepiAiTargetingApp(object):
 
 
 
-  def detectionImageCb(self,img_in_msg):
-    data_product = 'image'
-    output_image = rospy.get_param('~selected_output_image', self.init_selected_output_image)
-    if output_image == 'detection_image':
-      has_subscribers =  self.has_subscribers_target_img
-      saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
-      data_should_save  = self.save_data_if.data_product_should_save(data_product) and saving_is_enabled
-      snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
-      save_data = data_should_save or snapshot_enabled
-      ros_timestamp = img_in_msg.header.stamp
-      # Publish new image to ros
-      if not rospy.is_shutdown() and has_subscribers: #and has_subscribers:
-          #Convert OpenCV image to ROS image
-          self.targeting_image_pub.publish(img_in_msg)
-      # Save Data if Time
-      if save_data:
-          cv2_img = nepi_img.rosimg_to_cv2img(img_in_msg)
-          self.save_img2file('ai_targeting_app',data_product,cv2_img,ros_timestamp)
+
 
 
   def targetingImageCb(self,img_in_msg):    
-    data_product = 'image'
+    data_product = 'targeting_image'
     output_image = rospy.get_param('~selected_output_image', self.init_selected_output_image)
     if self.targeting_image_pub is not None:
-      if output_image == 'alert_image' or output_image == 'targeting_image':
+      if output_image == 'Alert_Image' or output_image == 'Targeting_Image':
         has_subscribers =  self.has_subscribers_target_img
         saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
         data_should_save  = self.save_data_if.data_product_should_save(data_product) and saving_is_enabled
         snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
-        save_data = data_should_save or snapshot_enabled
+        save_data = (saving_is_enabled and data_should_save) or snapshot_enabled
         self.current_image_header = img_in_msg.header
         ros_timestamp = img_in_msg.header.stamp     
         self.img_height = img_in_msg.height
@@ -1041,7 +1058,7 @@ class NepiAiTargetingApp(object):
                 end_point = (xmax, ymax)
                 class_name = class_name
                 
-                if output_image == 'alert_image':
+                if output_image == 'Alert_Image':
                   class_color = (0,0,255)
                   line_thickness = 2
                   cv2.rectangle(cv2_img, start_point, end_point, color=class_color, thickness=line_thickness)
@@ -1055,7 +1072,7 @@ class NepiAiTargetingApp(object):
                   cv2.rectangle(cv2_img, start_point, end_point, color=class_color, thickness=line_thickness)
                   # Overlay text data on OpenCV image
                   font                   = cv2.FONT_HERSHEY_DUPLEX
-                  fontScale, thickness  = self.optimal_font_dims(cv2_img,font_scale = 1.2e-3, thickness_scale = 1.5e-3)
+                  fontScale, thickness  = nepi_img.optimal_font_dims(cv2_img,font_scale = 1.2e-3, thickness_scale = 1.5e-3)
                   fontColor = (0, 255, 0)
                   lineType = 1
                   text_size = cv2.getTextSize("Text", 
@@ -1095,14 +1112,9 @@ class NepiAiTargetingApp(object):
             self.targeting_image_pub.publish(img_out_msg)
         # Save Data if Time
         if save_data:
-            self.save_img2file('ai_targeting_app',data_product,cv2_img,ros_timestamp)
+          nepi_save.save_img2file(self,data_product,cv2_img,ros_timestamp,save_check = False)
 
 
-  def optimal_font_dims(self, img, font_scale = 2e-3, thickness_scale = 5e-3):
-    h, w, _ = img.shape
-    font_scale = min(w, h) * font_scale
-    thickness = math.ceil(min(w, h) * thickness_scale)
-    return font_scale, thickness
 
   def depthMapCb(self,depth_map_msg):
     self.current_detph_map_header = depth_map_msg.header
@@ -1121,43 +1133,29 @@ class NepiAiTargetingApp(object):
   def publish_status(self):
     status_msg = AiTargetingStatus()
 
-    status_msg.targeting_running = self.targeting_running
+    status_msg.classifier_running = self.classifier_running
 
     status_msg.classifier_name = self.current_classifier
     status_msg.classifier_state = self.current_classifier_state
-
+    status_msg.use_live_image = rospy.get_param('~use_live_image',self.init_use_live_image)
     status_msg.image_topic = self.current_image_topic
     status_msg.has_depth_map = self.has_depth_map
     status_msg.depth_map_topic = self.depth_map_topic
     status_msg.has_pointcloud = self.has_pointcloud
     status_msg.pointcloud_topic = self.pointcloud_topic
 
-    status_msg.output_image_options_list = str(self.output_image_options)
+    status_msg.output_image_options_list = (self.output_image_options)
     status_msg.selected_output_image = rospy.get_param('~selected_output_image', self.init_selected_output_image)
 
-    status_msg.available_classes_list = str(self.current_classifier_classes)
+    status_msg.available_classes_list = sorted(self.current_classifier_classes)
     selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
     classes_list = []
     depth_list = []
     for key in selected_classes_dict.keys():
       classes_list.append(key)
-      depth_list.append(str(selected_classes_dict[key]['depth']))
-    status_msg.selected_classes_list = str(classes_list)
-    status_msg.selected_classes_depth_list = str(depth_list)
-
-    status_msg.alert_status = self.alert_status
-
-    targets_list = self.active_targets_dict.keys()
-    avail_targets_list = []
-    if self.selected_target != "All" and self.selected_target not in targets_list:
-      avail_targets_list.append(self.selected_target)
-    for target in targets_list:
-      avail_targets_list.append(target) 
-    avail_targets_list = sorted(avail_targets_list)
-    avail_targets_list.insert(0,"All")
-    status_msg.available_targets_list = str(avail_targets_list)
-    status_msg.selected_target = self.selected_target
-
+      depth_list.append((selected_classes_dict[key]['depth']))
+    status_msg.selected_classes_list = (classes_list)
+    status_msg.selected_classes_depth_list = (depth_list)
 
     status_msg.image_fov_vert_degs = rospy.get_param('~image_fov_vert',  self.init_image_fov_vert)
     status_msg.image_fov_horz_degs = rospy.get_param('~image_fov_horz', self.init_image_fov_horz)
@@ -1183,46 +1181,24 @@ class NepiAiTargetingApp(object):
     self.status_pub.publish(status_msg)
 
  
-      
+  ## Status Publisher
+  def publish_targets(self):
+    targets_ms = AiTargetingTargets()
+
+    targets_list = self.active_targets_dict.keys()
+    avail_targets_list = []
+    if self.selected_target != "All" and self.selected_target not in targets_list:
+      avail_targets_list.append(self.selected_target)
+    for target in targets_list:
+      avail_targets_list.append(target) 
+    avail_targets_list = sorted(avail_targets_list)
+    avail_targets_list.insert(0,"All")
+    targets_ms.available_targets_list = (avail_targets_list)
+    targets_ms.selected_target = self.selected_target
+    #nepi_msg.publishMsgWarn(self," Targets Msg: " + str(targets_ms))
+    self.targets_pub.publish(targets_ms)     
     
-  #######################
-  # Data Saving Funcitons
  
-
-
-
-  def save_data2file(self,node_name,data_product,data,ros_timestamp):
-      if self.save_data_if is not None:
-        saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
-        snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
-        if data is not None:
-            if (self.save_data_if.data_product_should_save(data_product) or snapshot_enabled):
-                full_path_filename = self.save_data_if.get_full_path_filename(nepi_ros.get_datetime_str_from_stamp(ros_timestamp), 
-                                                                                        node_name + "_" + data_product, 'txt')
-                if os.path.isfile(full_path_filename) is False:
-                    with open(full_path_filename, 'w') as f:
-                        f.write('input_image: ' + self.current_image_topic + '\n')
-                        f.write(str(data))
-                        self.save_data_if.data_product_snapshot_reset(data_product)
-
-  def save_img2file(self,node_name,data_product,cv2_img,ros_timestamp):
-      if self.save_data_if is not None:
-        if cv2_img is not None:
-            full_path_filename = self.save_data_if.get_full_path_filename(nepi_ros.get_datetime_str_from_stamp(ros_timestamp), 
-                                                                                    node_name + "_" + data_product, 'png')
-            if os.path.isfile(full_path_filename) is False:
-                cv2.imwrite(full_path_filename, cv2_img)
-                self.save_data_if.data_product_snapshot_reset(data_product)
-
-  def save_pc2file(self,node_name,data_product,o3d_pc,ros_timestamp):
-      if self.save_data_if is not None:
-        if o3d_pc is not None:
-            full_path_filename = self.save_data_if.get_full_path_filename(nepi_ros.get_datetime_str_from_stamp(ros_timestamp), 
-                                                                                    node_name + "_" + data_product, 'pcd')
-            if os.path.isfile(full_path_filename) is False:
-                nepi_pc.save_pointcloud(o3d_pc,full_path_filename)
-                self.save_data_if.data_product_snapshot_reset(data_product)
-
                 
     
   #######################

@@ -60,6 +60,7 @@ nepi_ros_interfaces
 ## Generate messages in the 'msg' folder
  add_message_files(FILES
     AiTargetingStatus.msg
+    AiTargetingTargets.msg
  )
 
 ## Generate services in the 'srv' folder
