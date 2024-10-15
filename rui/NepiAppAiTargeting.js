@@ -664,7 +664,7 @@ class NepiAppAiTargeting extends Component {
 
 
       <Columns>
-      <Column equalWidth={false}>
+      <Column equalWidth={true}>
 
 
       <CameraViewer
@@ -673,12 +673,6 @@ class NepiAppAiTargeting extends Component {
         hideQualitySelector={false}
       />
 
-      <div hidden={appNamespace === null}>
-        <NepiIFSaveData
-              saveNamespace={appNamespace}
-              title={"Nepi_IF_SaveData"}
-          />
-      </div>
 
       </Column>
       <Column>
@@ -686,7 +680,12 @@ class NepiAppAiTargeting extends Component {
 
       {this.renderAiTargeting()}    
  
-
+      <div hidden={appNamespace === null}>
+        <NepiIFSaveData
+              saveNamespace={appNamespace}
+              title={"Nepi_IF_SaveData"}
+          />
+      </div>
 
       </Column>
       </Columns>
