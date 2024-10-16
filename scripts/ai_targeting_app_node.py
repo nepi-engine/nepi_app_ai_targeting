@@ -1039,7 +1039,8 @@ class NepiAiTargetingApp(object):
         ros_timestamp = img_in_msg.header.stamp     
         self.img_height = img_in_msg.height
         self.img_width = img_in_msg.width
-        cv2_img = nepi_img.rosimg_to_cv2img(img_in_msg)
+        cv2_in_img = nepi_img.rosimg_to_cv2img(img_in_msg)
+        cv2_img = copy.deepcopy(cv2_in_img)
         target_dict = copy.deepcopy(self.current_targets_dict)
 
         # Process Targeting Image if Needed
@@ -1061,7 +1062,7 @@ class NepiAiTargetingApp(object):
                 if output_image == 'Alert_Image':
                   class_color = (0,0,255)
                   line_thickness = 2
-                  cv2.rectangle(cv2_img, start_point, end_point, color=class_color, thickness=line_thickness)
+                  cv2.rectangle(cv2_img, start_point, end_point, class_color, thickness=line_thickness)
                 else:
                   class_color = (255,0,0)
                   if class_name in self.current_classifier_classes:
@@ -1069,10 +1070,10 @@ class NepiAiTargetingApp(object):
                       if class_ind < len(self.class_color_list):
                           class_color = tuple(self.class_color_list[class_ind])
                   line_thickness = 2
-                  cv2.rectangle(cv2_img, start_point, end_point, color=class_color, thickness=line_thickness)
+                  cv2.rectangle(cv2_img, start_point, end_point, class_color, thickness=line_thickness)
                   # Overlay text data on OpenCV image
                   font                   = cv2.FONT_HERSHEY_DUPLEX
-                  fontScale, thickness  = nepi_img.optimal_font_dims(cv2_img,font_scale = 1.2e-3, thickness_scale = 1.5e-3)
+                  fontScale, thickness  = nepi_img.optimal_font_dims(cv2_img,font_scale = 1.5e-3, thickness_scale = 1.5e-3)
                   fontColor = (0, 255, 0)
                   lineType = 1
                   text_size = cv2.getTextSize("Text", 
@@ -1104,7 +1105,7 @@ class NepiAiTargetingApp(object):
                       fontScale,
                       fontColor,
                       thickness,
-                      lineType)   
+                      lineType)  
         # Publish new image to ros
         if not rospy.is_shutdown() and has_subscribers: #and has_subscribers:
             #Convert OpenCV image to ROS image
