@@ -85,7 +85,7 @@ class NepiAiTargetingApp(object):
                                     'velocity_pxps': [0,0],
                                     'enter_m': [0,0,0],
                                     'velocity_mps': [0,0,0],
-                                    'last_detection_timestamp': rospy.Duration(0)                              
+                                    'last_detection_timestamp': nepi_ros.duration(0)                              
                                     }
 
 
@@ -213,7 +213,7 @@ class NepiAiTargetingApp(object):
     AI_MGR_STATUS_SERVICE_NAME = self.ai_mgr_namespace  + "/img_classifier_status_query"
     self.get_ai_mgr_status_service = rospy.ServiceProxy(AI_MGR_STATUS_SERVICE_NAME, ImageClassifierStatusQuery)
     time.sleep(1)
-    rospy.Timer(rospy.Duration(1), self.updaterCb)
+    nepi_ros.timer(nepi_ros.duration(1), self.updaterCb)
 
     # Start AI Manager Subscribers
     FOUND_OBJECT_TOPIC = self.ai_mgr_namespace  + "/found_object"
@@ -232,7 +232,7 @@ class NepiAiTargetingApp(object):
     self.alert_trigger_pub = rospy.Publisher("~alert_trigger",Bool,queue_size=1)
     self.targeting_image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1, latch = True)
 
-    rospy.Timer(rospy.Duration(1), self.updateHasSubscribersThread)
+    nepi_ros.timer(nepi_ros.duration(1), self.updateHasSubscribersThread)
 
     time.sleep(1)
 
@@ -243,7 +243,7 @@ class NepiAiTargetingApp(object):
     self.publish_targets()
 
     # Spin forever (until object is detected)
-    rospy.spin()
+    nepi_ros.spin()
 
 
 
@@ -255,19 +255,19 @@ class NepiAiTargetingApp(object):
     self.resetApp()
 
   def resetApp(self):
-    rospy.set_param('~last_classifier', "")
-    rospy.set_param('~use_live_image',True)
-    rospy.set_param('~selected_output_image', self.FACTORY_OUTPUT_IMAGE)
-    rospy.set_param('~selected_classes_dict', dict())
-    rospy.set_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
-    rospy.set_param('~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
-    rospy.set_param('~target_box_percent',  self.FACTORY_TARGET_BOX_SIZE_PERCENT)
-    rospy.set_param('~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
-    rospy.set_param('~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
-    rospy.set_param('~target_min_px_ratio', self.FACTORY_TARGET_MIN_PX_RATIO)
-    rospy.set_param('~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
-    rospy.set_param('~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
-    rospy.set_param('~frame_3d_transform', self.ZERO_TRANSFORM)
+    nepi_ros.set_param(self,'~last_classifier', "")
+    nepi_ros.set_param(self,'~use_live_image',True)
+    nepi_ros.set_param(self,'~selected_output_image', self.FACTORY_OUTPUT_IMAGE)
+    nepi_ros.set_param(self,'~selected_classes_dict', dict())
+    nepi_ros.set_param(self,'~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
+    nepi_ros.set_param(self,'~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
+    nepi_ros.set_param(self,'~target_box_percent',  self.FACTORY_TARGET_BOX_SIZE_PERCENT)
+    nepi_ros.set_param(self,'~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
+    nepi_ros.set_param(self,'~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
+    nepi_ros.set_param(self,'~target_min_px_ratio', self.FACTORY_TARGET_MIN_PX_RATIO)
+    nepi_ros.set_param(self,'~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
+    nepi_ros.set_param(self,'~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
+    nepi_ros.set_param(self,'~frame_3d_transform', self.ZERO_TRANSFORM)
     self.current_targets_dict = dict()
     self.lost_targets_dict = dict()
     self.publish_status()
@@ -286,35 +286,35 @@ class NepiAiTargetingApp(object):
 
   def initParamServerValues(self,do_updates = True):
       nepi_msg.publishMsgInfo(self," Setting init values to param values")
-      self.init_last_classifier = rospy.get_param("~last_classifier", "")
-      self.init_use_live_image = rospy.get_param('~use_live_image',True)
-      self.init_selected_output_image = rospy.get_param('~selected_output_image', self.FACTORY_OUTPUT_IMAGE)
-      self.init_selected_classes_dict = rospy.get_param('~selected_classes_dict', dict())
-      self.init_image_fov_vert = rospy.get_param('~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
-      self.init_image_fov_horz = rospy.get_param('~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
-      self.init_target_box_adjust = rospy.get_param('~target_box_percent',  self.FACTORY_TARGET_BOX_SIZE_PERCENT)
-      self.init_default_target_depth = rospy.get_param('~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
-      self.init_target_min_points = rospy.get_param('~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
-      self.init_target_min_px_ratio = rospy.get_param('~target_min_px_ratio', self.FACTORY_TARGET_MIN_PX_RATIO)
-      self.init_target_min_dist_m = rospy.get_param('~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
-      self.init_target_age_filter = rospy.get_param('~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
-      self.init_frame_3d_transform = rospy.get_param('~frame_3d_transform', self.ZERO_TRANSFORM)
+      self.init_last_classifier = nepi_ros.get_param(self,"~last_classifier", "")
+      self.init_use_live_image = nepi_ros.get_param(self,'~use_live_image',True)
+      self.init_selected_output_image = nepi_ros.get_param(self,'~selected_output_image', self.FACTORY_OUTPUT_IMAGE)
+      self.init_selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', dict())
+      self.init_image_fov_vert = nepi_ros.get_param(self,'~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
+      self.init_image_fov_horz = nepi_ros.get_param(self,'~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
+      self.init_target_box_adjust = nepi_ros.get_param(self,'~target_box_percent',  self.FACTORY_TARGET_BOX_SIZE_PERCENT)
+      self.init_default_target_depth = nepi_ros.get_param(self,'~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
+      self.init_target_min_points = nepi_ros.get_param(self,'~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
+      self.init_target_min_px_ratio = nepi_ros.get_param(self,'~target_min_px_ratio', self.FACTORY_TARGET_MIN_PX_RATIO)
+      self.init_target_min_dist_m = nepi_ros.get_param(self,'~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
+      self.init_target_age_filter = nepi_ros.get_param(self,'~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
+      self.init_frame_3d_transform = nepi_ros.get_param(self,'~frame_3d_transform', self.ZERO_TRANSFORM)
       self.resetParamServer(do_updates)
 
   def resetParamServer(self,do_updates = True):
-      rospy.set_param('~last_classiier', self.init_last_classifier)
-      rospy.get_param('~use_live_image',self.init_use_live_image)
-      rospy.set_param('~selected_output_image', self.init_selected_output_image)
-      rospy.set_param('~selected_classes_dict', self.init_selected_classes_dict)
-      rospy.set_param('~image_fov_vert',  self.init_image_fov_vert)
-      rospy.set_param('~image_fov_horz', self.init_image_fov_horz)
-      rospy.set_param('~target_box_percent',  self.init_target_box_adjust)
-      rospy.set_param('~default_target_depth',  self.init_default_target_depth)
-      rospy.set_param('~target_min_points', self.init_target_min_points)
-      rospy.set_param('~target_min_px_ratio', self.init_target_min_px_ratio)
-      rospy.get_param('~target_min_dist_m', self.init_target_min_dist_m)
-      rospy.set_param('~target_age_filter', self.init_target_age_filter)
-      rospy.set_param('~frame_3d_transform', self.init_frame_3d_transform)
+      nepi_ros.set_param(self,'~last_classiier', self.init_last_classifier)
+      nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
+      nepi_ros.set_param(self,'~selected_output_image', self.init_selected_output_image)
+      nepi_ros.set_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+      nepi_ros.set_param(self,'~image_fov_vert',  self.init_image_fov_vert)
+      nepi_ros.set_param(self,'~image_fov_horz', self.init_image_fov_horz)
+      nepi_ros.set_param(self,'~target_box_percent',  self.init_target_box_adjust)
+      nepi_ros.set_param(self,'~default_target_depth',  self.init_default_target_depth)
+      nepi_ros.set_param(self,'~target_min_points', self.init_target_min_points)
+      nepi_ros.set_param(self,'~target_min_px_ratio', self.init_target_min_px_ratio)
+      nepi_ros.get_param(self,'~target_min_dist_m', self.init_target_min_dist_m)
+      nepi_ros.set_param(self,'~target_age_filter', self.init_target_age_filter)
+      nepi_ros.set_param(self,'~frame_3d_transform', self.init_frame_3d_transform)
       if do_updates:
           self.updateFromParamServer()
           self.publish_status()
@@ -345,7 +345,7 @@ class NepiAiTargetingApp(object):
     current_live = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
     if live != current_live:
       self.last_image_topic = None # Will force resubscribe later
-      rospy.set_param('~selected_output_image', image_name)
+      nepi_ros.set_param(self,'~selected_output_image', image_name)
       nepi_ros.set_param(self,'~use_live_image',live)
     self.publish_status()
 
@@ -354,42 +354,42 @@ class NepiAiTargetingApp(object):
     ##nepi_msg.publishMsgInfo(self,msg)
     image_name = msg.data
     if image_name in self.output_image_options:
-      rospy.set_param('~selected_output_image', image_name)
+      nepi_ros.set_param(self,'~selected_output_image', image_name)
     self.publish_status()
 
 
   def addAllClassesCb(self,msg):
     ##nepi_msg.publishMsgInfo(self,msg)
     classes = self.current_classifier_classes
-    depth = rospy.get_param('~default_target_depth',self.init_default_target_depth)
+    depth = nepi_ros.get_param(self,'~default_target_depth',self.init_default_target_depth)
     selected_dict = dict()
     for Class in classes:
       selected_dict[Class] = {'depth': depth }
-    rospy.set_param('~selected_classes_dict', selected_dict)
+    nepi_ros.set_param(self,'~selected_classes_dict', selected_dict)
     self.publish_status()
 
   def removeAllClassesCb(self,msg):
     ##nepi_msg.publishMsgInfo(self,msg)
-    rospy.set_param('~selected_classes_dict', dict())
+    nepi_ros.set_param(self,'~selected_classes_dict', dict())
     self.publish_status()
 
   def addClassCb(self,msg):
     ##nepi_msg.publishMsgInfo(self,msg)
     class_name = msg.data
-    class_depth_m = rospy.get_param('~default_target_depth',  self.init_default_target_depth)
+    class_depth_m = nepi_ros.get_param(self,'~default_target_depth',  self.init_default_target_depth)
     if class_name in self.current_classifier_classes:
-      selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
+      selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
       selected_classes_dict[class_name] = {'depth': class_depth_m}
-      rospy.set_param('~selected_classes_dict', selected_classes_dict)
+      nepi_ros.set_param(self,'~selected_classes_dict', selected_classes_dict)
     self.publish_status()
 
   def removeClassCb(self,msg):
     ##nepi_msg.publishMsgInfo(self,msg)
     class_name = msg.data
-    selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
+    selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
     if class_name in selected_classes_dict.keys():
       del selected_classes_dict[class_name]
-      rospy.set_param('~selected_classes_dict', selected_classes_dict)
+      nepi_ros.set_param(self,'~selected_classes_dict', selected_classes_dict)
     self.publish_status()
 
 
@@ -404,7 +404,7 @@ class NepiAiTargetingApp(object):
     ##nepi_msg.publishMsgInfo(self,msg)
     fov = msg.data
     if fov > 0:
-      rospy.set_param('~image_fov_vert',  fov)
+      nepi_ros.set_param(self,'~image_fov_vert',  fov)
     self.publish_status()
 
 
@@ -412,49 +412,49 @@ class NepiAiTargetingApp(object):
     ##nepi_msg.publishMsgInfo(self,msg)
     fov = msg.data
     if fov > 0:
-      rospy.set_param('~image_fov_horz',  fov)
+      nepi_ros.set_param(self,'~image_fov_horz',  fov)
     self.publish_status()
     
   def setTargetBoxPercentCb(self,msg):
     #nepi_msg.publishMsgInfo(self,msg)
     val = msg.data
     if val >= 10 and val <= 200:
-      rospy.set_param('~target_box_percent',val)
+      nepi_ros.set_param(self,'~target_box_percent',val)
     self.publish_status()   
       
   def setDefaultTargetDepthCb(self,msg):
     #nepi_msg.publishMsgInfo(self,msg)
     val = msg.data
     if val >= 0:
-      rospy.set_param('~default_target_depth',val)
+      nepi_ros.set_param(self,'~default_target_depth',val)
     self.publish_status()   
 
   def setTargetMinPointsCb(self,msg):
     #nepi_msg.publishMsgInfo(self,msg)
     val = msg.data
     if val >= 0:
-      rospy.set_param('~target_min_points',val)
+      nepi_ros.set_param(self,'~target_min_points',val)
     self.publish_status() 
 
   def setTargetMinPxRatioCb(self,msg):
     #nepi_msg.publishMsgInfo(self,msg)
     val = msg.data
     if val >= 0 and val <= 1:
-      rospy.set_param('~target_min_px_ratio',val)
+      nepi_ros.set_param(self,'~target_min_px_ratio',val)
     self.publish_status() 
 
   def setTargetMinDistMCb(self,msg):
     #nepi_msg.publishMsgInfo(self,msg)
     val = msg.data
     if val >= 0:
-      rospy.set_param('~target_min_dist_m',val)
+      nepi_ros.set_param(self,'~target_min_dist_m',val)
     self.publish_status() 
 
   def setAgeFilterCb(self,msg):
     #nepi_msg.publishMsgInfo(self,msg)
     val = msg.data
     if val >= 0:
-      rospy.set_param('~target_age_filter',val)
+      nepi_ros.set_param(self,'~target_age_filter',val)
     self.publish_status()
 
   def setFrame3dTransformCb(self, msg):
@@ -471,7 +471,7 @@ class NepiAiTargetingApp(object):
       yaw = transform_msg.rotate_vector.z
       heading = transform_msg.heading_offset
       transform = [x,y,z,roll,pitch,yaw,heading]
-      rospy.set_param('~frame_3d_transform',  transform)
+      nepi_ros.set_param(self,'~frame_3d_transform',  transform)
       #nepi_msg.publishMsgInfo(self,"AI_TARG_APP: Updated Transform: " + str(transform))
 
   def clearFrame3dTransformCb(self, msg):
@@ -480,7 +480,7 @@ class NepiAiTargetingApp(object):
 
   def clearFrame3dTransform(self, transform_msg):
       transform = self.ZERO_TRANSFORM
-      self.init_frame_3d_transform = rospy.set_param('~idx/frame_3d_transform',  transform)
+      self.init_frame_3d_transform = nepi_ros.set_param(self,'~idx/frame_3d_transform',  transform)
       self.status_msg.frame_3d_transform = transform_msg
       self.publishStatus(do_updates=False) # Updated inline here 
 
@@ -516,8 +516,8 @@ class NepiAiTargetingApp(object):
     ros_timestamp = bounding_boxes_msg.header.stamp
     image_seq_num = bounding_boxes_msg.header.seq
     self.detect_boxes_msg=bounding_boxes_msg
-    transform = rospy.get_param('~frame_3d_transform', self.init_frame_3d_transform)
-    selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
+    transform = nepi_ros.get_param(self,'~frame_3d_transform', self.init_frame_3d_transform)
+    selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
     alert_classes = list(selected_classes_dict.keys())
     # Check for alert class
     alert = False
@@ -538,12 +538,12 @@ class NepiAiTargetingApp(object):
     if self.img_height != 0 and self.img_width != 0:
         # Iterate over all of the objects and calculate range and bearing data
         
-        image_fov_vert = rospy.get_param('~image_fov_vert',  self.init_image_fov_vert)
-        image_fov_horz = rospy.get_param('~image_fov_horz', self.init_image_fov_horz)
-        target_box_adjust_percent = rospy.get_param('~target_box_percent',  self.init_target_box_adjust)
-        target_min_points = rospy.get_param('~target_min_points',  self.init_target_min_points)    
-        target_min_px_ratio = rospy.get_param('~target_min_px_ratio', self.init_target_min_px_ratio)
-        target_min_dist_m = rospy.get_param('~target_min_dist_m', self.init_target_min_dist_m)
+        image_fov_vert = nepi_ros.get_param(self,'~image_fov_vert',  self.init_image_fov_vert)
+        image_fov_horz = nepi_ros.get_param(self,'~image_fov_horz', self.init_image_fov_horz)
+        target_box_adjust_percent = nepi_ros.get_param(self,'~target_box_percent',  self.init_target_box_adjust)
+        target_min_points = nepi_ros.get_param(self,'~target_min_points',  self.init_target_min_points)    
+        target_min_px_ratio = nepi_ros.get_param(self,'~target_min_px_ratio', self.init_target_min_px_ratio)
+        target_min_dist_m = nepi_ros.get_param(self,'~target_min_dist_m', self.init_target_min_dist_m)
         detect_boxes_msg = copy.deepcopy(self.detect_boxes_msg)
         targeting_boxes_msg = copy.deepcopy(detect_boxes_msg)
         target_uids = []
@@ -829,7 +829,7 @@ class NepiAiTargetingApp(object):
     # Publish and Save 2D Bounding Boxes
     if len(bbs2d) > 0:
       detect_boxes_msg.bounding_boxes = bbs2d
-      if not rospy.is_shutdown():
+      if not nepi_ros.is_shutdown():
         self.targeting_boxes_2d_pub.publish(detect_boxes_msg)
       # Save Data if it is time.
       nepi_save.save_data2file(self,"targeting_boxes_2d",detect_boxes_msg,ros_timestamp)
@@ -844,7 +844,7 @@ class NepiAiTargetingApp(object):
       target_locs_msg.depth_header = self.depth_map_header
       target_locs_msg.target_localizations = tls
 
-      if not rospy.is_shutdown():
+      if not nepi_ros.is_shutdown():
         self.target_localizations_pub.publish(target_locs_msg)
       # Save Data if Time
       nepi_save.save_data2file(self,'targeting_localizations',target_locs_msg,ros_timestamp)
@@ -861,7 +861,7 @@ class NepiAiTargetingApp(object):
       targeting_boxes_3d_msg.depth_map_header = self.depth_map_header
       targeting_boxes_3d_msg.depth_map_topic = self.depth_map_topic
       targeting_boxes_3d_msg.bounding_boxes_3d = bbs3d
-      if not rospy.is_shutdown():
+      if not nepi_ros.is_shutdown():
         self.targeting_boxes_3d_pub.publish(targeting_boxes_3d_msg)
       # Save Data if Time
       nepi_save.save_data2file(self,'targeting_boxes_3d',targeting_boxes_3d_msg,ros_timestamp)
@@ -870,11 +870,11 @@ class NepiAiTargetingApp(object):
     # Update status info from detector
     update_status = False
     # Purge Current Targets List based on Age
-    current_timestamp = rospy.get_rostime()
+    current_timestamp = nepi_ros.get_rostime()
     active_targets_dict = copy.deepcopy(self.active_targets_dict)
     lost_targets_dict = copy.deepcopy(self.lost_targets_dict)
     purge_list = []
-    age_filter_sec = rospy.get_param('~target_age_filter', self.init_target_age_filter)
+    age_filter_sec = nepi_ros.get_param(self,'~target_age_filter', self.init_target_age_filter)
     #nepi_msg.publishMsgWarn(self,active_targets_dict)
     for target in active_targets_dict.keys():
       last_timestamp = active_targets_dict[target]['last_detection_timestamp']
@@ -925,15 +925,15 @@ class NepiAiTargetingApp(object):
       #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
       update_status = True
   
-    selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
-    last_classifier = rospy.get_param('~last_classiier', self.init_last_classifier)
+    selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+    last_classifier = nepi_ros.get_param(self,'~last_classiier', self.init_last_classifier)
     if last_classifier != self.current_classifier and self.current_classifier != "None":
       selected_classes_dict = dict() # Reset classes to all on new classifier
       for target_class in self.current_classifier_classes:
         selected_classes_dict[target_class] = {'depth': self.FACTORY_TARGET_DEPTH_METERS}
       update_status = True
-    rospy.set_param('~selected_classes_dict', selected_classes_dict)
-    rospy.set_param('~last_classiier', self.current_classifier)
+    nepi_ros.set_param(self,'~selected_classes_dict', selected_classes_dict)
+    nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
     #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
     if self.classifier_running:
       if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None"):
@@ -1027,7 +1027,7 @@ class NepiAiTargetingApp(object):
 
   def targetingImageCb(self,img_in_msg):    
     data_product = 'targeting_image'
-    output_image = rospy.get_param('~selected_output_image', self.init_selected_output_image)
+    output_image = nepi_ros.get_param(self,'~selected_output_image', self.init_selected_output_image)
     if self.targeting_image_pub is not None:
       if output_image == 'Alert_Image' or output_image == 'Targeting_Image':
         has_subscribers =  self.has_subscribers_target_img
@@ -1107,7 +1107,7 @@ class NepiAiTargetingApp(object):
                       thickness,
                       lineType)  
         # Publish new image to ros
-        if not rospy.is_shutdown() and has_subscribers: #and has_subscribers:
+        if not nepi_ros.is_shutdown() and has_subscribers: #and has_subscribers:
             #Convert OpenCV image to ROS image
             img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding='bgr8')
             self.targeting_image_pub.publish(img_out_msg)
@@ -1138,7 +1138,7 @@ class NepiAiTargetingApp(object):
 
     status_msg.classifier_name = self.current_classifier
     status_msg.classifier_state = self.current_classifier_state
-    status_msg.use_live_image = rospy.get_param('~use_live_image',self.init_use_live_image)
+    status_msg.use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
     status_msg.image_topic = self.current_image_topic
     status_msg.has_depth_map = self.has_depth_map
     status_msg.depth_map_topic = self.depth_map_topic
@@ -1146,10 +1146,10 @@ class NepiAiTargetingApp(object):
     status_msg.pointcloud_topic = self.pointcloud_topic
 
     status_msg.output_image_options_list = (self.output_image_options)
-    status_msg.selected_output_image = rospy.get_param('~selected_output_image', self.init_selected_output_image)
+    status_msg.selected_output_image = nepi_ros.get_param(self,'~selected_output_image', self.init_selected_output_image)
 
     status_msg.available_classes_list = sorted(self.current_classifier_classes)
-    selected_classes_dict = rospy.get_param('~selected_classes_dict', self.init_selected_classes_dict)
+    selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
     classes_list = []
     depth_list = []
     for key in selected_classes_dict.keys():
@@ -1158,17 +1158,17 @@ class NepiAiTargetingApp(object):
     status_msg.selected_classes_list = (classes_list)
     status_msg.selected_classes_depth_list = (depth_list)
 
-    status_msg.image_fov_vert_degs = rospy.get_param('~image_fov_vert',  self.init_image_fov_vert)
-    status_msg.image_fov_horz_degs = rospy.get_param('~image_fov_horz', self.init_image_fov_horz)
+    status_msg.image_fov_vert_degs = nepi_ros.get_param(self,'~image_fov_vert',  self.init_image_fov_vert)
+    status_msg.image_fov_horz_degs = nepi_ros.get_param(self,'~image_fov_horz', self.init_image_fov_horz)
 
-    status_msg.target_box_size_percent = rospy.get_param('~target_box_percent',  self.init_target_box_adjust)
-    status_msg.default_target_depth_m = rospy.get_param('~default_target_depth',  self.init_default_target_depth)
-    status_msg.target_min_points = rospy.get_param('~target_min_points', self.init_target_min_points)
-    status_msg.target_min_px_ratio = rospy.get_param('~target_min_px_ratio', self.init_target_min_px_ratio)
-    status_msg.target_min_dist_m = rospy.get_param('~target_min_dist_m', self.init_target_min_dist_m)
-    status_msg.target_age_filter = rospy.get_param('~target_age_filter', self.init_target_age_filter)
+    status_msg.target_box_size_percent = nepi_ros.get_param(self,'~target_box_percent',  self.init_target_box_adjust)
+    status_msg.default_target_depth_m = nepi_ros.get_param(self,'~default_target_depth',  self.init_default_target_depth)
+    status_msg.target_min_points = nepi_ros.get_param(self,'~target_min_points', self.init_target_min_points)
+    status_msg.target_min_px_ratio = nepi_ros.get_param(self,'~target_min_px_ratio', self.init_target_min_px_ratio)
+    status_msg.target_min_dist_m = nepi_ros.get_param(self,'~target_min_dist_m', self.init_target_min_dist_m)
+    status_msg.target_age_filter = nepi_ros.get_param(self,'~target_age_filter', self.init_target_age_filter)
     # The transfer frame for target data adjustments from image's native frame to the nepi center frame
-    transform = rospy.get_param('~frame_3d_transform',  self.init_frame_3d_transform)
+    transform = nepi_ros.get_param(self,'~frame_3d_transform',  self.init_frame_3d_transform)
     transform_msg = Frame3DTransform()
     transform_msg.translate_vector.x = transform[0]
     transform_msg.translate_vector.y = transform[1]
