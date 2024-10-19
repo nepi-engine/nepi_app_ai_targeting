@@ -38,8 +38,7 @@ from geometry_msgs.msg import Vector3
 from sensor_msgs.msg import Image
 from rospy.numpy_msg import numpy_msg
 from cv_bridge import CvBridge
-from nepi_ros_interfaces.msg import ClassifierSelection,  \
-                                    BoundingBox, BoundingBoxes, BoundingBox3D, BoundingBoxes3D, \
+from nepi_ros_interfaces.msg import BoundingBox, BoundingBoxes, BoundingBox3D, BoundingBoxes3D, \
                                     ObjectCount, ClassifierSelection, \
                                     StringArray, TargetLocalization, TargetLocalizations
 from nepi_ros_interfaces.srv import ImageClassifierStatusQuery, ImageClassifierStatusQueryRequest
@@ -144,6 +143,8 @@ class NepiAiTargetingApp(object):
   has_subscribers_target_img = False
 
   classifier_running = False
+  classifier_loading_progress = 0.0
+  classifier_threshold = 0.3
 
   #######################
   ### Node Initialization
@@ -181,15 +182,6 @@ class NepiAiTargetingApp(object):
     ## App Setup ########################################################
     app_reset_app_sub = rospy.Subscriber('~reset_app', Empty, self.resetAppCb, queue_size = 10)
     self.initParamServerValues(do_updates=False)
-
-    # AI Management Scubscirbers and publishers
-  
-    rospy.Subscriber('~start_classifier', ClassifierSelection, self.startClassifierCb)
-    self.start_classifier_pub = rospy.Publisher(self.ai_mgr_namespace  + "/start_classifier", ClassifierSelection, queue_size=1)
-    rospy.Subscriber('~stop_classifier', Empty, self.stopClassifierCb)
-    self.stop_classifier_pub = rospy.Publisher(self.ai_mgr_namespace  + "/stop_classifier", Empty, queue_size=1)
-    rospy.Subscriber('~set_threshold', Float32, self.setThresholdCb) 
-    self.set_threshold_pub = rospy.Publisher(self.ai_mgr_namespace  + "/set_threshold", Float32, queue_size=1)
 
     # App Specific Subscribers
     set_image_input_sub = rospy.Subscriber('~use_live_image', Bool, self.setImageLiveCb, queue_size = 10)
@@ -322,21 +314,6 @@ class NepiAiTargetingApp(object):
 
 
   ###################
-  ## AI Manager Passthrough Callbacks
-
-  def startClassifierCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
-    self.start_classifier_pub.publish(msg)
-
-  def stopClassifierCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
-    self.stop_classifier_pub.publish(msg)
-
-  def setThresholdCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
-    self.set_threshold_pub.publish(msg)
-
-  ###################
   ## AI App Callbacks
 
   def setImageLiveCb(self,msg):
@@ -345,7 +322,6 @@ class NepiAiTargetingApp(object):
     current_live = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
     if live != current_live:
       self.last_image_topic = None # Will force resubscribe later
-      nepi_ros.set_param(self,'~selected_output_image', image_name)
       nepi_ros.set_param(self,'~use_live_image',live)
     self.publish_status()
 
@@ -936,9 +912,8 @@ class NepiAiTargetingApp(object):
     nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
     #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
     if self.classifier_running:
+      use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
       if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None"):
-        use_live_image = nepi_ros.get_param(self,"~use_live_image",self.init_use_live_image)
-        image_topic = ""
         if use_live_image:
           image_topic = nepi_ros.find_topic(self.current_image_topic)
         if image_topic == "":
@@ -947,7 +922,6 @@ class NepiAiTargetingApp(object):
         nepi_msg.publishMsgInfo(self," Got detect image update topic update : " + image_topic)
         update_status = True
         if image_topic != "":
-          self.current_image_topic = image_topic
           self.targeting_running = True
           update_status = True
           if self.image_sub != None:
