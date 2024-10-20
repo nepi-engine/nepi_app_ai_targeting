@@ -20,7 +20,7 @@ APP_DICT = dict(
 )
 RUI_DICT = dict(
     rui_menu_name = "AI Targeting", # RUI menu name or "None" if no rui support
-    rui_files = ['NepiAppAiTargeting.js','NepiAppAiTargetingControls.js'],
+    rui_files = ['NepiAppAiTargeting.js'],
     rui_main_file = "NepiAppAiTargeting.js",
     rui_main_class = "AiTargetingApp"
 )

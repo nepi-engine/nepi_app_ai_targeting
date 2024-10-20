@@ -14,9 +14,6 @@ string[] available_classes_list
 string[] selected_classes_list
 float32[] selected_classes_depth_list
 
-string[] output_image_options_list
-string selected_output_image
-
 float32 image_fov_vert_degs 
 float32 image_fov_horz_degs 
 
