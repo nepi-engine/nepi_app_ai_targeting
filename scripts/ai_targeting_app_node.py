@@ -126,7 +126,7 @@ class NepiAiTargetingApp(object):
   current_targets_dict = dict()
   active_targets_dict = dict()
   lost_targets_dict = dict()
-  selected_target = "All"
+  selected_target = "None"
 
   targeting_class_list = []
   targeting_target_list = []
@@ -312,6 +312,236 @@ class NepiAiTargetingApp(object):
           self.publish_status()
 
 
+  ###################
+  ## Status Publisher
+  def publish_status(self):
+    status_msg = AiTargetingStatus()
+
+    status_msg.classifier_running = self.classifier_running
+
+    status_msg.classifier_name = self.current_classifier
+    status_msg.classifier_state = self.current_classifier_state
+    status_msg.use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
+    status_msg.image_topic = self.current_image_topic
+    status_msg.has_depth_map = self.has_depth_map
+    status_msg.depth_map_topic = self.depth_map_topic
+    status_msg.has_pointcloud = self.has_pointcloud
+    status_msg.pointcloud_topic = self.pointcloud_topic
+
+    status_msg.output_image_options_list = (self.output_image_options)
+    status_msg.selected_output_image = nepi_ros.get_param(self,'~selected_output_image', self.init_selected_output_image)
+    avail_classes = self.classes_list
+    #nepi_msg.publishMsgWarn(self," available classes: " + str(avail_classes))
+    if len(avail_classes) == 0:
+      avail_classes = ["None"]
+    avail_classes = sorted(avail_classes)
+    status_msg.available_classes_list = avail_classes
+    selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+    sel_classes_list = []
+    depth_list = []
+    for key in selected_classes_dict.keys():
+      sel_classes_list.append(key)
+      depth_list.append((selected_classes_dict[key]['depth']))
+    if len(sel_classes_list) == 0:
+      sel_classes_list = ['None']
+      depth_list = [0]
+    status_msg.selected_classes_list = (sel_classes_list)
+    status_msg.selected_classes_depth_list = (depth_list)
+
+    status_msg.image_fov_vert_degs = nepi_ros.get_param(self,'~image_fov_vert',  self.init_image_fov_vert)
+    status_msg.image_fov_horz_degs = nepi_ros.get_param(self,'~image_fov_horz', self.init_image_fov_horz)
+
+    status_msg.target_box_size_percent = nepi_ros.get_param(self,'~target_box_percent',  self.init_target_box_adjust)
+    status_msg.default_target_depth_m = nepi_ros.get_param(self,'~default_target_depth',  self.init_default_target_depth)
+    status_msg.target_min_points = nepi_ros.get_param(self,'~target_min_points', self.init_target_min_points)
+    status_msg.target_min_px_ratio = nepi_ros.get_param(self,'~target_min_px_ratio', self.init_target_min_px_ratio)
+    status_msg.target_min_dist_m = nepi_ros.get_param(self,'~target_min_dist_m', self.init_target_min_dist_m)
+    status_msg.target_age_filter = nepi_ros.get_param(self,'~target_age_filter', self.init_target_age_filter)
+    # The transfer frame for target data adjustments from image's native frame to the nepi center frame
+    transform = nepi_ros.get_param(self,'~frame_3d_transform',  self.init_frame_3d_transform)
+    transform_msg = Frame3DTransform()
+    transform_msg.translate_vector.x = transform[0]
+    transform_msg.translate_vector.y = transform[1]
+    transform_msg.translate_vector.z = transform[2]
+    transform_msg.rotate_vector.x = transform[3]
+    transform_msg.rotate_vector.y = transform[4]
+    transform_msg.rotate_vector.z = transform[5]
+    transform_msg.heading_offset = transform[6]
+    status_msg.frame_3d_transform = transform_msg
+
+    self.status_pub.publish(status_msg)
+
+ 
+  ## Status Publisher
+  def publish_targets(self):
+    targets_ms = AiTargetingTargets()
+
+    targets_list = self.active_targets_dict.keys()
+    avail_targets_list = []
+    if self.selected_target != "None" and self.selected_target not in targets_list:
+      avail_targets_list.append(self.selected_target)
+    for target in targets_list:
+      avail_targets_list.append(target) 
+    avail_targets_list = sorted(avail_targets_list)
+    avail_targets_list.insert(0,"None")
+    targets_ms.available_targets_list = (avail_targets_list)
+    targets_ms.selected_target = self.selected_target
+    #nepi_msg.publishMsgWarn(self," Targets Msg: " + str(targets_ms))
+    self.targets_pub.publish(targets_ms)     
+    
+ 
+
+  def updaterCb(self,timer):
+    # Update status info from detector
+    update_status = False
+    # Purge Current Targets List based on Age
+    current_timestamp = nepi_ros.get_rostime()
+    active_targets_dict = copy.deepcopy(self.active_targets_dict)
+    lost_targets_dict = copy.deepcopy(self.lost_targets_dict)
+    purge_list = []
+    age_filter_sec = nepi_ros.get_param(self,'~target_age_filter', self.init_target_age_filter)
+    #nepi_msg.publishMsgWarn(self,active_targets_dict)
+    for target in active_targets_dict.keys():
+      last_timestamp = active_targets_dict[target]['last_detection_timestamp']
+      #nepi_msg.publishMsgWarn(self,target)
+      #nepi_msg.publishMsgWarn(self,ros_timestamp.to_sec())
+      #nepi_msg.publishMsgWarn(self,last_timestamp.to_sec())
+      age =(current_timestamp.to_sec() - last_timestamp.to_sec())
+      #nepi_msg.publishMsgWarn(self,"Target " + target + " age: " + str(age))
+      if age > age_filter_sec:
+        purge_list.append(target)
+    #nepi_msg.publishMsgWarn(self,"Target Purge List: " + str(purge_list))
+    for target in purge_list: 
+        lost_targets_dict[target] = active_targets_dict[target]
+        nepi_msg.publishMsgInfo(self," Purging target: " + target + " from active target list")
+        del active_targets_dict[target]
+        update_status = True
+    self.active_targets_dict = active_targets_dict
+    self.lost_targets_dict = lost_targets_dict
+    self.publish_targets()
+    try:
+      ai_mgr_status_response = self.get_ai_mgr_status_service()
+      #nepi_msg.publishMsgInfo(self," Got classifier status  " + str(ai_mgr_status_response))
+    except Exception as e:
+      nepi_msg.publishMsgWarn(self,"Failed to call AI MGR STATUS service" + str(e))
+      return
+    #status_str = str(ai_mgr_status_response)
+    #nepi_msg.publishMsgWarn(self," got ai manager status: " + status_str)
+    self.current_image_topic = ai_mgr_status_response.selected_img_topic
+    self.current_classifier = ai_mgr_status_response.selected_classifier
+    self.current_classifier_state = ai_mgr_status_response.classifier_state
+    self.classifier_running = self.current_classifier_state == "Running"
+    classes_list = ai_mgr_status_response.selected_classifier_classes
+    if classes_list != self.classes_list:
+      self.classes_list = classes_list
+      if len(self.classes_list) > 0:
+        cmap = plt.get_cmap('viridis')
+        color_list = cmap(np.linspace(0, 1, len(self.classes_list))).tolist()
+        rgb_list = []
+        for color in color_list:
+          rgb = []
+          for i in range(3):
+            rgb.append(int(color[i]*255))
+          rgb_list.append(rgb)
+        self.class_color_list = rgb_list
+        #nepi_msg.publishMsgWarn(self,self.class_color_list)
+      #classes_str = str(self.classes_list)
+      #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
+      update_status = True
+  
+    selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+    last_classifier = nepi_ros.get_param(self,'~last_classiier', self.init_last_classifier)
+    if last_classifier != self.current_classifier and self.current_classifier != "None":
+      selected_classes_dict = dict() # Reset classes to all on new classifier
+      for target_class in self.classes_list:
+        selected_classes_dict[target_class] = {'depth': self.FACTORY_TARGET_DEPTH_METERS}
+      update_status = True
+    nepi_ros.set_param(self,'~selected_classes_dict', selected_classes_dict)
+    nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
+    #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
+    if self.classifier_running:
+      use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
+      if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None"):
+        image_topic = ""
+        if use_live_image:
+          image_topic = nepi_ros.find_topic(self.current_image_topic)
+        if image_topic == "":
+          source_topic = AI_MGR_STATUS_SERVICE_NAME = self.ai_mgr_namespace  + "/source_image"
+          image_topic = nepi_ros.find_topic(source_topic)
+        nepi_msg.publishMsgInfo(self," Got detect image update topic update : " + image_topic)
+        update_status = True
+        if image_topic != "":
+          self.targeting_running = True
+          update_status = True
+          if self.image_sub != None:
+            nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + image_topic)
+            self.image_sub.unregister()
+            self.image_sub = None
+          time.sleep(1)
+          if self.targeting_image_pub is None:
+            #nepi_msg.publishMsgWarn(self," Creating Image publisher ")
+            self.targeting_image_pub = rospy.Publisher("~image",Image,queue_size=1)
+            time.sleep(1)
+          nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
+
+          self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 1)
+      
+          # Look for Depth Map
+          depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
+          depth_map_topic = nepi_ros.find_topic(depth_map_topic)
+          if depth_map_topic == "":
+            depth_map_topic = "None"
+            self.has_depth_map = False
+          else:
+            self.has_depth_map = True
+          self.depth_map_topic = depth_map_topic
+          #nepi_msg.publishMsgWarn(self,self.depth_map_topic)
+          if depth_map_topic != "None":
+            if self.depth_map_sub != None:
+              self.depth_map_sub.unregister()
+              self.depth_map_sub = None
+              time.sleep(1)
+            nepi_msg.publishMsgInfo(self," Subscribing to Depth Map topic : " + depth_map_topic)
+            self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
+            update_status = True
+            # If there is a depth_map, check for pointdcloud
+            pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
+            pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
+            if pointcloud_topic == "":
+              pointcloud_topic = "None"
+              self.has_pointcloud = False
+            else:
+              self.has_pointcloud = True
+            self.pointcloud_topic = pointcloud_topic
+    elif self.classifier_running == False or self.current_image_topic == "None" or self.current_image_topic == "":  # Turn off targeting subscribers and reset last image topic
+      self.targeting_running = False
+      self.current_targets_dict = dict()
+      if self.image_sub != None:
+        nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.current_image_topic)
+        self.image_sub.unregister()
+        self.image_sub = None
+      if self.depth_map_sub != None:
+        self.depth_map_sub.unregister()
+        self.has_depth_map = False
+        self.depth_map_header = Header()
+      self.depth_map_topic = "None"
+      self.has_pointcloud = False
+      self.pointcloud_topic = "None"
+      update_status = True
+      time.sleep(1)
+
+    # Publish warning image if not running
+    if self.classifier_running == False or self.image_sub == None:
+      self.ros_message_img.header.stamp = nepi_ros.time_now()
+      self.targeting_image_pub.publish(self.ros_message_img)
+
+    # Save last image topic for next check
+    self.last_image_topic = self.current_image_topic
+    if update_status == True:
+      self.publish_status()
+
+
+
 
   ###################
   ## AI App Callbacks
@@ -336,7 +566,7 @@ class NepiAiTargetingApp(object):
 
   def addAllClassesCb(self,msg):
     ##nepi_msg.publishMsgInfo(self,msg)
-    classes = self.current_classifier_classes
+    classes = self.classes_list
     depth = nepi_ros.get_param(self,'~default_target_depth',self.init_default_target_depth)
     selected_dict = dict()
     for Class in classes:
@@ -353,7 +583,7 @@ class NepiAiTargetingApp(object):
     ##nepi_msg.publishMsgInfo(self,msg)
     class_name = msg.data
     class_depth_m = nepi_ros.get_param(self,'~default_target_depth',  self.init_default_target_depth)
-    if class_name in self.current_classifier_classes:
+    if class_name in self.classes_list:
       selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
       selected_classes_dict[class_name] = {'depth': class_depth_m}
       nepi_ros.set_param(self,'~selected_classes_dict', selected_classes_dict)
@@ -372,7 +602,7 @@ class NepiAiTargetingApp(object):
   def selectTargetCb(self,msg):
     ##nepi_msg.publishMsgInfo(self,msg)
     target_name = msg.data
-    if target_name == 'All' or target_name in self.current_targets_dict.keys():
+    if target_name == 'None' or target_name in self.active_targets_dict.keys():
       self.selected_target = target_name
     self.publish_targets()
 
@@ -572,6 +802,7 @@ class NepiAiTargetingApp(object):
                         # Get target range from cropped and filtered depth data
                         depth_box_adj= np_depth_array_m[ymin_adj:ymax_adj,xmin_adj:xmax_adj]
                         depth_array=depth_box_adj.flatten()
+                        depth_array = depth_array[~np.isinf(depth_array)] # remove inf entries
                         depth_array = depth_array[~np.isnan(depth_array)] # remove nan entries
                         depth_array = depth_array[depth_array>0] # remove zero entries
                         depth_val=np.mean(depth_array) # Initialize fallback value.  maybe updated
@@ -589,7 +820,9 @@ class NepiAiTargetingApp(object):
                             bins_per_target = 10
                             bin_step = target_depth / bins_per_target
                             num_bins = 1
-                            if bin_step > 0:
+                            #nepi_msg.publishMsgWarn(self,'delta_range: ' + str(delta_range))
+                            #nepi_msg.publishMsgWarn(self,'bin_step: ' + str(bin_step))
+                            if bin_step > 0.001 and math.isinf(delta_range) == False :
                               num_bins = int(delta_range / bin_step)
                             # Get histogram
                             hist, hbins = np.histogram(depth_array, bins = num_bins, range = (min_range,max_range))
@@ -701,7 +934,7 @@ class NepiAiTargetingApp(object):
                             target_uid = box.Class + "_" + str(uid_suffix)
                         target_uids.append(target_uid)
                         bounding_box_3d_msg = None
-                        if self.selected_target == "All" or self.selected_target == target_uid:
+                        if self.selected_target == "None" or self.selected_target == target_uid:
                             # Updated Bounding Box 2d
                             bounding_box_msg = BoundingBox()
                             bounding_box_msg.Class = box.Class
@@ -760,10 +993,16 @@ class NepiAiTargetingApp(object):
                                 # Now update range and bearing values based on transform
                                 target_range_m = math.sqrt(bbc.x**2 + bbc.y**2 + bbc.z**2)
                                 #nepi_msg.publishMsgWarn(self,str([bbc.x,bbc.y,bbc.z]))
-                                horz_ang = np.arctan(bbc.x/bbc.y) * 180/math.pi
-                                target_horz_angle_deg = np.sign(horz_ang) * (90 - abs(horz_ang)) - transform[5]
-                                vert_ang = np.arctan(bbc.x/-bbc.z) * 180/math.pi
-                                target_vert_angle_deg = np.sign(vert_ang) * (90 - abs(vert_ang)) - transform[4]
+                                try:
+                                  horz_ang = np.arctan(bbc.x/(bbc.y)) * 180/math.pi
+                                  target_horz_angle_deg = np.sign(horz_ang) * (90 - abs(horz_ang)) - transform[5]
+                                except:
+                                  target_horz_angle_deg = -999
+                                try:
+                                  vert_ang = np.arctan(bbc.x/(-bbc.z)) * 180/math.pi
+                                  target_vert_angle_deg = np.sign(vert_ang) * (90 - abs(vert_ang)) - transform[4]
+                                except:
+                                  target_vert_angle_deg = -999
 
                             # Create target_localizations
                             target_data_msg=TargetLocalization()
@@ -842,162 +1081,6 @@ class NepiAiTargetingApp(object):
       # Save Data if Time
       nepi_save.save_data2file(self,'targeting_boxes_3d',targeting_boxes_3d_msg,ros_timestamp)
 
-  def updaterCb(self,timer):
-    # Update status info from detector
-    update_status = False
-    # Purge Current Targets List based on Age
-    current_timestamp = nepi_ros.get_rostime()
-    active_targets_dict = copy.deepcopy(self.active_targets_dict)
-    lost_targets_dict = copy.deepcopy(self.lost_targets_dict)
-    purge_list = []
-    age_filter_sec = nepi_ros.get_param(self,'~target_age_filter', self.init_target_age_filter)
-    #nepi_msg.publishMsgWarn(self,active_targets_dict)
-    for target in active_targets_dict.keys():
-      last_timestamp = active_targets_dict[target]['last_detection_timestamp']
-      #nepi_msg.publishMsgWarn(self,target)
-      #nepi_msg.publishMsgWarn(self,ros_timestamp.to_sec())
-      #nepi_msg.publishMsgWarn(self,last_timestamp.to_sec())
-      age =(current_timestamp.to_sec() - last_timestamp.to_sec())
-      #nepi_msg.publishMsgWarn(self,"Target " + target + " age: " + str(age))
-      if age > age_filter_sec:
-        purge_list.append(target)
-    #nepi_msg.publishMsgWarn(self,"Target Purge List: " + str(purge_list))
-    for target in purge_list: 
-        lost_targets_dict[target] = active_targets_dict[target]
-        nepi_msg.publishMsgInfo(self," Purging target: " + target + " from active target list")
-        del active_targets_dict[target]
-        update_status = True
-    self.active_targets_dict = active_targets_dict
-    self.lost_targets_dict = lost_targets_dict
-    self.publish_targets()
-    try:
-      ai_mgr_status_response = self.get_ai_mgr_status_service()
-    except Exception as e:
-      nepi_msg.publishMsgInfo(self," Failed to call AI MGR STATUS service " + str(e))
-      return
-    #status_str = str(ai_mgr_status_response)
-    #nepi_msg.publishMsgWarn(self," got ai manager status: " + status_str)
-    self.current_image_topic = ai_mgr_status_response.selected_img_topic
-    self.current_classifier = ai_mgr_status_response.selected_classifier
-    self.current_classifier_state = ai_mgr_status_response.classifier_state
-    self.classifier_running = self.current_classifier_state == "Running"
-    classes_string = ai_mgr_status_response.selected_classifier_classes
-    classes_list = nepi_ros.parse_string_list_msg_data(classes_string)
-    if classes_list != self.classes_list:
-      self.classes_list = classes_list
-      self.current_classifier_classes = sorted(self.classes_list)
-      if len(self.current_classifier_classes) > 0:
-        cmap = plt.get_cmap('viridis')
-        color_list = cmap(np.linspace(0, 1, len(self.current_classifier_classes))).tolist()
-        rgb_list = []
-        for color in color_list:
-          rgb = []
-          for i in range(3):
-            rgb.append(int(color[i]*255))
-          rgb_list.append(rgb)
-        self.class_color_list = rgb_list
-        #nepi_msg.publishMsgWarn(self,self.class_color_list)
-      #classes_str = str(self.current_classifier_classes)
-      #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
-      update_status = True
-  
-    selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
-    last_classifier = nepi_ros.get_param(self,'~last_classiier', self.init_last_classifier)
-    if last_classifier != self.current_classifier and self.current_classifier != "None":
-      selected_classes_dict = dict() # Reset classes to all on new classifier
-      for target_class in self.current_classifier_classes:
-        selected_classes_dict[target_class] = {'depth': self.FACTORY_TARGET_DEPTH_METERS}
-      update_status = True
-    nepi_ros.set_param(self,'~selected_classes_dict', selected_classes_dict)
-    nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
-    #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
-    if self.classifier_running:
-      use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
-      if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None"):
-        if use_live_image:
-          image_topic = nepi_ros.find_topic(self.current_image_topic)
-        if image_topic == "":
-          source_topic = AI_MGR_STATUS_SERVICE_NAME = self.ai_mgr_namespace  + "/source_image"
-          image_topic = nepi_ros.find_topic(source_topic)
-        nepi_msg.publishMsgInfo(self," Got detect image update topic update : " + image_topic)
-        update_status = True
-        if image_topic != "":
-          self.targeting_running = True
-          update_status = True
-          if self.image_sub != None:
-            nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + image_topic)
-            self.image_sub.unregister()
-            self.image_sub = None
-          time.sleep(1)
-          if self.targeting_image_pub is None:
-            #nepi_msg.publishMsgWarn(self," Creating Image publisher ")
-            self.targeting_image_pub = rospy.Publisher("~image",Image,queue_size=1)
-            time.sleep(1)
-          nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
-
-          self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 1)
-      
-          # Look for Depth Map
-          depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
-          depth_map_topic = nepi_ros.find_topic(depth_map_topic)
-          if depth_map_topic == "":
-            depth_map_topic = "None"
-            self.has_depth_map = False
-          else:
-            self.has_depth_map = True
-          self.depth_map_topic = depth_map_topic
-          #nepi_msg.publishMsgWarn(self,self.depth_map_topic)
-          if depth_map_topic != "None":
-            if self.depth_map_sub != None:
-              self.depth_map_sub.unregister()
-              self.depth_map_sub = None
-              time.sleep(1)
-            nepi_msg.publishMsgInfo(self," Subscribing to Depth Map topic : " + depth_map_topic)
-            self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
-            update_status = True
-            # If there is a depth_map, check for pointdcloud
-            pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
-            pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
-            if pointcloud_topic == "":
-              pointcloud_topic = "None"
-              self.has_pointcloud = False
-            else:
-              self.has_pointcloud = True
-            self.pointcloud_topic = pointcloud_topic
-    elif self.classifier_running == False or self.current_image_topic == "None" or self.current_image_topic == "":  # Turn off targeting subscribers and reset last image topic
-      self.targeting_running = False
-      self.current_targets_dict = dict()
-      if self.image_sub != None:
-        nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + image_topic)
-        self.image_sub.unregister()
-        self.image_sub = None
-      if self.depth_map_sub != None:
-        self.depth_map_sub.unregister()
-        self.has_depth_map = False
-        self.depth_map_header = Header()
-      self.depth_map_topic = "None"
-      self.has_pointcloud = False
-      self.pointcloud_topic = "None"
-      update_status = True
-      time.sleep(1)
-
-    # Publish warning image if not running
-    if self.classifier_running == False or self.image_sub == None:
-      self.ros_message_img.header.stamp = nepi_ros.time_now()
-      self.targeting_image_pub.publish(self.ros_message_img)
-
-
-
-    # Save last image topic for next check
-    self.last_image_topic = self.current_image_topic
-    if update_status == True:
-      self.publish_status()
-
-
-
-
-
-
 
   def targetingImageCb(self,img_in_msg):    
     data_product = 'targeting_image'
@@ -1039,8 +1122,8 @@ class NepiAiTargetingApp(object):
                   cv2.rectangle(cv2_img, start_point, end_point, class_color, thickness=line_thickness)
                 else:
                   class_color = (255,0,0)
-                  if class_name in self.current_classifier_classes:
-                      class_ind = self.current_classifier_classes.index(class_name)
+                  if class_name in self.classes_list:
+                      class_ind = self.classes_list.index(class_name)
                       if class_ind < len(self.class_color_list):
                           class_color = tuple(self.class_color_list[class_ind])
                   line_thickness = 2
@@ -1069,9 +1152,20 @@ class NepiAiTargetingApp(object):
                   # Overlay Data
                   #nepi_msg.publishMsgWarn(self,line_height)
                   if target_range_m == -999:
-                      text2overlay="#," + "%.f" % target_horz_angle_deg + "d," + "%.f" % target_vert_angle_deg + "d"
+                    tr = '#'
                   else:
-                      text2overlay="%.1f" % target_range_m + "m," + "%.f" % target_horz_angle_deg + "d," + "%.f" % target_vert_angle_deg + "d"
+                    tr = ("%.1f" % target_range_m )
+                  if target_horz_angle_deg == -999:
+                    th = '#'
+                  else:
+                    th = ("%.f" % target_horz_angle_deg)
+
+                  if target_vert_angle_deg == -999:
+                    tv = '#'
+                  else:
+                    tv = ("%.f" % target_vert_angle_deg)
+
+                  text2overlay= tr + "m," + th + "d," + tv + "d"
                   bottomLeftCornerOfText = (xmin + line_thickness,ymin + line_thickness * 2 + line_height * 2)
                   cv2.putText(cv2_img,text2overlay, 
                       bottomLeftCornerOfText, 
@@ -1103,77 +1197,7 @@ class NepiAiTargetingApp(object):
     self.np_depth_array_m[np.isnan(self.np_depth_array_m)] = 0 # zero pixels with no value
     self.np_depth_array_m[np.isinf(self.np_depth_array_m)] = 0 # zero pixels with inf value
 
-  ###################
-  ## Status Publisher
-  def publish_status(self):
-    status_msg = AiTargetingStatus()
 
-    status_msg.classifier_running = self.classifier_running
-
-    status_msg.classifier_name = self.current_classifier
-    status_msg.classifier_state = self.current_classifier_state
-    status_msg.use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
-    status_msg.image_topic = self.current_image_topic
-    status_msg.has_depth_map = self.has_depth_map
-    status_msg.depth_map_topic = self.depth_map_topic
-    status_msg.has_pointcloud = self.has_pointcloud
-    status_msg.pointcloud_topic = self.pointcloud_topic
-
-    status_msg.output_image_options_list = (self.output_image_options)
-    status_msg.selected_output_image = nepi_ros.get_param(self,'~selected_output_image', self.init_selected_output_image)
-
-    status_msg.available_classes_list = sorted(self.current_classifier_classes)
-    selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
-    classes_list = []
-    depth_list = []
-    for key in selected_classes_dict.keys():
-      classes_list.append(key)
-      depth_list.append((selected_classes_dict[key]['depth']))
-    status_msg.selected_classes_list = (classes_list)
-    status_msg.selected_classes_depth_list = (depth_list)
-
-    status_msg.image_fov_vert_degs = nepi_ros.get_param(self,'~image_fov_vert',  self.init_image_fov_vert)
-    status_msg.image_fov_horz_degs = nepi_ros.get_param(self,'~image_fov_horz', self.init_image_fov_horz)
-
-    status_msg.target_box_size_percent = nepi_ros.get_param(self,'~target_box_percent',  self.init_target_box_adjust)
-    status_msg.default_target_depth_m = nepi_ros.get_param(self,'~default_target_depth',  self.init_default_target_depth)
-    status_msg.target_min_points = nepi_ros.get_param(self,'~target_min_points', self.init_target_min_points)
-    status_msg.target_min_px_ratio = nepi_ros.get_param(self,'~target_min_px_ratio', self.init_target_min_px_ratio)
-    status_msg.target_min_dist_m = nepi_ros.get_param(self,'~target_min_dist_m', self.init_target_min_dist_m)
-    status_msg.target_age_filter = nepi_ros.get_param(self,'~target_age_filter', self.init_target_age_filter)
-    # The transfer frame for target data adjustments from image's native frame to the nepi center frame
-    transform = nepi_ros.get_param(self,'~frame_3d_transform',  self.init_frame_3d_transform)
-    transform_msg = Frame3DTransform()
-    transform_msg.translate_vector.x = transform[0]
-    transform_msg.translate_vector.y = transform[1]
-    transform_msg.translate_vector.z = transform[2]
-    transform_msg.rotate_vector.x = transform[3]
-    transform_msg.rotate_vector.y = transform[4]
-    transform_msg.rotate_vector.z = transform[5]
-    transform_msg.heading_offset = transform[6]
-    status_msg.frame_3d_transform = transform_msg
-
-    self.status_pub.publish(status_msg)
-
- 
-  ## Status Publisher
-  def publish_targets(self):
-    targets_ms = AiTargetingTargets()
-
-    targets_list = self.active_targets_dict.keys()
-    avail_targets_list = []
-    if self.selected_target != "All" and self.selected_target not in targets_list:
-      avail_targets_list.append(self.selected_target)
-    for target in targets_list:
-      avail_targets_list.append(target) 
-    avail_targets_list = sorted(avail_targets_list)
-    avail_targets_list.insert(0,"All")
-    targets_ms.available_targets_list = (avail_targets_list)
-    targets_ms.selected_target = self.selected_target
-    #nepi_msg.publishMsgWarn(self," Targets Msg: " + str(targets_ms))
-    self.targets_pub.publish(targets_ms)     
-    
- 
                 
     
   #######################
