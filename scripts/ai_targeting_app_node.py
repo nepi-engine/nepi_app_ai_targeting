@@ -76,16 +76,17 @@ class NepiAiTargetingApp(object):
   NONE_CLASSES_DICT["None"] = {'depth': FACTORY_TARGET_DEPTH_METERS}
 
   EMPTY_TARGET_DICT = dict()
-  EMPTY_TARGET_DICT["None"] = {     'class_name': 'None', 
-                                    'target_uid': 'None',
-                                    'bounding_box': [0,0,0,0],
-                                    'range_bearings': [0,0,0],
-                                    'center_px': [0,0],
-                                    'velocity_pxps': [0,0],
-                                    'enter_m': [0,0,0],
-                                    'velocity_mps': [0,0,0],
-                                    'last_detection_timestamp': nepi_ros.duration(0)                              
-                                    }
+  EMPTY_TARGET_DICT["None"] = {     
+    'class_name': 'None', 
+    'target_uid': 'None',
+    'bounding_box': [0,0,0,0],
+    'range_bearings': [0,0,0],
+    'center_px': [0,0],
+    'velocity_pxps': [0,0],
+    'enter_m': [0,0,0],
+    'velocity_mps': [0,0,0],
+    'last_detection_timestamp': nepi_ros.duration(0)                              
+    }
 
 
   targeting_running = False
@@ -167,6 +168,20 @@ class NepiAiTargetingApp(object):
     cv2_img = nepi_img.create_message_image(message)
     self.ros_message_img = nepi_img.cv2img_to_rosimg(cv2_img)
 
+    #self.detection_targeting_image_pub = rospy.Publisher("~detection_image",Image,queue_size=1)
+    # Setup Node Publishers
+    self.status_pub = rospy.Publisher("~status", AiTargetingStatus, queue_size=1, latch=True)
+    self.targets_pub = rospy.Publisher("~targets", AiTargetingTargets, queue_size=1, latch=True)
+    self.targeting_boxes_2d_pub = rospy.Publisher("~targeting_boxes_2d", BoundingBoxes, queue_size=1)
+    self.targeting_boxes_3d_pub = rospy.Publisher("~targeting_boxes_3d", BoundingBoxes3D, queue_size=1)
+    self.target_localizations_pub = rospy.Publisher("~targeting_localizations", TargetLocalizations, queue_size=1)
+    self.alert_status_pub = rospy.Publisher("~alert_status",Bool,queue_size=1)
+    self.alert_trigger_pub = rospy.Publisher("~alert_trigger",Bool,queue_size=1)
+    self.targeting_image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1, latch = True)
+    time.sleep(1)
+    self.ros_message_img.header.stamp = nepi_ros.time_now()
+    self.targeting_image_pub.publish(self.ros_message_img)
+
     # Set up save data and save config services ########################################################
     factory_data_rates= {}
     for d in self.data_products:
@@ -213,16 +228,7 @@ class NepiAiTargetingApp(object):
     BOUNDING_BOXES_TOPIC = self.ai_mgr_namespace  + "/bounding_boxes"
     rospy.Subscriber(BOUNDING_BOXES_TOPIC, BoundingBoxes, self.object_detected_callback, queue_size = 1)
 
-    #self.detection_targeting_image_pub = rospy.Publisher("~detection_image",Image,queue_size=1)
-    # Setup Node Publishers
-    self.status_pub = rospy.Publisher("~status", AiTargetingStatus, queue_size=1, latch=True)
-    self.targets_pub = rospy.Publisher("~targets", AiTargetingTargets, queue_size=1, latch=True)
-    self.targeting_boxes_2d_pub = rospy.Publisher("~targeting_boxes_2d", BoundingBoxes, queue_size=1)
-    self.targeting_boxes_3d_pub = rospy.Publisher("~targeting_boxes_3d", BoundingBoxes3D, queue_size=1)
-    self.target_localizations_pub = rospy.Publisher("~targeting_localizations", TargetLocalizations, queue_size=1)
-    self.alert_status_pub = rospy.Publisher("~alert_status",Bool,queue_size=1)
-    self.alert_trigger_pub = rospy.Publisher("~alert_trigger",Bool,queue_size=1)
-    self.targeting_image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1, latch = True)
+
 
     nepi_ros.timer(nepi_ros.duration(1), self.updateHasSubscribersThread)
 
