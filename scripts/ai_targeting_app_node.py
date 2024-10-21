@@ -146,7 +146,7 @@ class NepiAiTargetingApp(object):
 
   #######################
   ### Node Initialization
-  DEFAULT_NODE_NAME = "ai_targeting_app" # Can be overwitten by luanch command
+  DEFAULT_NODE_NAME = "app_ai_targeting" # Can be overwitten by luanch command
   def __init__(self):
     #### APP NODE INIT SETUP ####
     nepi_ros.init_node(name= self.DEFAULT_NODE_NAME)
@@ -174,6 +174,7 @@ class NepiAiTargetingApp(object):
     self.target_localizations_pub = rospy.Publisher("~targeting_localizations", TargetLocalizations, queue_size=1)
     self.targeting_image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1, latch = True)
     time.sleep(1)
+    # Publish a quick image
     self.ros_message_img.header.stamp = nepi_ros.time_now()
     self.targeting_image_pub.publish(self.ros_message_img)
 
@@ -1025,11 +1026,10 @@ class NepiAiTargetingApp(object):
         self.targeting_boxes_2d_pub.publish(bbs_msg)
       # Save Data if it is time.
         bbs_dict = dict()
-        bbs_dict['header'] =  bbs_msg.header
-        bbs_dict['image_header'] = bbs_msg.image_header
+        bbs_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(bbs_msg.header.stamp)
         bbs_dict['image_topic'] = bbs_msg.image_topic
         bb_list = []
-        for ind, bb_msg in enumerate(bbs_msg):
+        for ind, bb_msg in enumerate(bbs_msg.bounding_boxes):
             bb_dict = dict()
             bb_dict['class'] = bb_msg.Class
             bb_dict['id'] = bb_msg.id
@@ -1041,7 +1041,7 @@ class NepiAiTargetingApp(object):
             bb_dict['ymax'] = bb_msg.ymax
             bb_list.append(bb_dict)
         bbs_dict['bounding_boxes'] = bb_list
-      nepi_save.save_dict2file(self,"targeting_boxes_2d",bbs2d,ros_timestamp)
+      nepi_save.save_dict2file(self,"targeting_boxes_2d",bbs_dict,ros_timestamp)
 
     # Publish and Save Target Localizations
     if len(tls) > 0:
@@ -1057,13 +1057,12 @@ class NepiAiTargetingApp(object):
         self.target_localizations_pub.publish(tls_msg)
       # Save Data if Time
       tls_dict = dict()
-      tls_dict['header'] =  tls_msg.header
-      tls_dict['image_header'] = tls_msg.image_header
+
+      tls_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(tls_msg.header.stamp)
       tls_dict['image_topic'] = tls_msg.image_topic
-      tls_dict['depth_header'] = tls_msg.depth_header
       tls_dict['depth_topic'] = tls_msg.depth_topic
       tl_list = []
-      for ind, tl_msg in enumerate(tls_msg):
+      for ind, tl_msg in enumerate(tls_msg.target_localizations):
           tl_dict = dict()
           tl_dict['class'] = tl_msg.Class
           tl_dict['id'] = tl_msg.id
@@ -1093,13 +1092,11 @@ class NepiAiTargetingApp(object):
         self.targeting_boxes_3d_pub.publish(bb3s_msg)
       # Save Data if Time
       bb3s_dict = dict()
-      bb3s_dict['header'] =  bb3s_msg.header
-      bb3s_dict['image_header'] = bb3s_msg.image_header
+      bb3s_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(bb3s_msg.header.stamp)
       bb3s_dict['image_topic'] = bb3s_msg.image_topic
-      bb3s_dict['depth_map_header'] = bb3s_msg.depth_map_header_header
       bb3s_dict['depth_map_topic'] = bb3s_msg.depth_map_header_topic
       bb3_list = []
-      for ind, bb3_msg in enumerate(bb3s_msg):
+      for ind, bb3_msg in enumerate(bb3s_msg.bounding_boxes_3d):
           bb3_dict = dict()
           bb3_dict['class'] = bb3_msg.Class
           bb3_dict['id'] = bb3_msg.id
@@ -1202,7 +1199,12 @@ class NepiAiTargetingApp(object):
         # Publish new image to ros
         if not nepi_ros.is_shutdown() and has_subscribers: #and has_subscribers:
             #Convert OpenCV image to ROS image
-            img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding='bgr8')
+            cv2_shape = cv2_img.shape
+            if  cv2_shape[2] == 3:
+              encode = 'bgr8'
+            else:
+              encode = 'mono8'
+            img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding=encode)
             self.targeting_image_pub.publish(img_out_msg)
         # Save Data if Time
         if save_data:
