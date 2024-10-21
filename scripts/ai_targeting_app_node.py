@@ -144,6 +144,10 @@ class NepiAiTargetingApp(object):
   classifier_loading_progress = 0.0
   classifier_threshold = 0.3
 
+  img_width = 0 # Updated on receipt of first image
+  img_height = 0 # Updated on receipt of first image
+
+
   #######################
   ### Node Initialization
   DEFAULT_NODE_NAME = "app_ai_targeting" # Can be overwitten by luanch command
@@ -169,6 +173,10 @@ class NepiAiTargetingApp(object):
     # Setup Node Publishers
     self.status_pub = rospy.Publisher("~status", AiTargetingStatus, queue_size=1, latch=True)
     self.targets_pub = rospy.Publisher("~targets", AiTargetingTargets, queue_size=1, latch=True)
+    self.box_count_pub = rospy.Publisher("~boxes_count", ObjectCount, queue_size=1, latch=True)
+    self.box3d_count_pub = rospy.Publisher("~boxes3d_count", ObjectCount, queue_size=1, latch=True)
+    self.target_count_pub = rospy.Publisher("~target_count", ObjectCount, queue_size=1, latch=True)
+
     self.targeting_boxes_2d_pub = rospy.Publisher("~targeting_boxes_2d", BoundingBoxes, queue_size=1)
     self.targeting_boxes_3d_pub = rospy.Publisher("~targeting_boxes_3d", BoundingBoxes3D, queue_size=1)
     self.target_localizations_pub = rospy.Publisher("~targeting_localizations", TargetLocalizations, queue_size=1)
@@ -478,7 +486,7 @@ class NepiAiTargetingApp(object):
             #nepi_msg.publishMsgWarn(self," Creating Image publisher ")
             self.targeting_image_pub = rospy.Publisher("~image",Image,queue_size=1)
             time.sleep(1)
-          nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
+          nepi_msg.publishMsgWarn(self," Subscribing to Image topic : " + image_topic)
 
           self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 1)
       
@@ -706,10 +714,11 @@ class NepiAiTargetingApp(object):
 
   ### If object(s) detected, save bounding box info to global
   def object_detected_callback(self,bounding_boxes_msg):
+
     detect_header = bounding_boxes_msg.header
     ros_timestamp = bounding_boxes_msg.header.stamp
     image_seq_num = bounding_boxes_msg.header.seq
-    self.bbs_msg=copy.deepcopy(bounding_boxes_msg)
+    bbs_msg=copy.deepcopy(bounding_boxes_msg)
     transform = nepi_ros.get_param(self,'~frame_3d_transform', self.init_frame_3d_transform)
     selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
 
@@ -719,6 +728,7 @@ class NepiAiTargetingApp(object):
     bbs2d = []
     tls = []
     bbs3d = []
+
     if self.img_height != 0 and self.img_width != 0:
         # Iterate over all of the objects and calculate range and bearing data
         
@@ -728,11 +738,8 @@ class NepiAiTargetingApp(object):
         target_min_points = nepi_ros.get_param(self,'~target_min_points',  self.init_target_min_points)    
         target_min_px_ratio = nepi_ros.get_param(self,'~target_min_px_ratio', self.init_target_min_px_ratio)
         target_min_dist_m = nepi_ros.get_param(self,'~target_min_dist_m', self.init_target_min_dist_m)
-        bbs_msg = self.bbs_msg
-        targeting_boxes_msg = bbs_msg
         target_uids = []
         if bbs_msg is not None:
-            targeting_boxes_msg.bounding_boxes = [] 
             box_class_list = []
             box_area_list = []
             box_mmx_list = []
@@ -748,6 +755,14 @@ class NepiAiTargetingApp(object):
                 box_x = box.xmin + (box.xmax - box.xmin)
                 box_center = [box_y,box_x]
                 box_center_list.append(box_center)
+                #Calculate areas
+                img_area = self.img_height * self.img_width
+                area_pixels = (box.xmax - box.xmin) * (box.ymax - box.ymin)
+                if img_area > 1:
+                    area_ratio = area_pixels / img_area
+                else:
+                    area_ratio = -999
+
             for i, box in enumerate(bbs_msg.bounding_boxes):
                 if box.Class in selected_classes_dict.keys():
                     self.seq += 1 
@@ -769,7 +784,7 @@ class NepiAiTargetingApp(object):
                     ymax_adj=box.ymax + delta_y
                     xmin_adj=box.xmin - delta_x
                     xmax_adj=box.xmax + delta_x
-                    #nepi_msg.publishMsgWarn(self,[ymin_adj,ymax_adj,xmin_adj,xmax_adj])
+                    #nepi_msg.publishMsgWarn(self,str([ymin_adj,ymax_adj,xmin_adj,xmax_adj]))
                     # Calculate target range
                     target_range_m=float(-999)  # NEPI standard unset value
                     target_depth = selected_classes_dict[box.Class]['depth']
@@ -903,6 +918,7 @@ class NepiAiTargetingApp(object):
                                 cent_in_y = box_y > box_mmy_list[i3][0] and box_y < box_mmy_list[i3][1]
                                 if cent_in_x and cent_in_y: # Check if target center is within a bigger box
                                     valid_2d_target = False
+                    #nepi_msg.publishMsgWarn(self,"Target Valid: " + str(valid_2d_target))
                     if valid_2d_target:
                         #### NEED TO Calculate Unique IDs
                         uid_suffix = 0
@@ -912,6 +928,9 @@ class NepiAiTargetingApp(object):
                             target_uid = box.Class + "_" + str(uid_suffix)
                         target_uids.append(target_uid)
                         bounding_box_3d_msg = None
+
+                        #nepi_msg.publishMsgWarn(self,"Target Selected: " + str(self.selected_target))
+                        #nepi_msg.publishMsgWarn(self,"Target Uid: " + str(target_uid))
                         if self.selected_target == "None" or self.selected_target == target_uid:
                             # Updated Bounding Box 2d
                             bounding_box_msg = BoundingBox()
@@ -919,9 +938,17 @@ class NepiAiTargetingApp(object):
                             bounding_box_msg.id = box.id
                             bounding_box_msg.uid = target_uid
                             bounding_box_msg.probability = box.probability
+                            bounding_box_msg.xmin = box.xmin
+                            bounding_box_msg.xmax = box.xmax
+                            bounding_box_msg.ymin = box.ymin
+                            bounding_box_msg.ymax = box.ymax
+                            bounding_box_msg.area_pixels = area_pixels
+                            bounding_box_msg.area_ratio = area_ratio
                             bbs2d.append(bounding_box_msg)
 
                             # Create Bounding Box 3d
+                            area_meters = -999
+                            volume_meters = -999
                             if target_range_m != -999:
                                 target_depth = selected_classes_dict[box.Class]['depth']
                                 # Calculate Bounding Box 3D
@@ -966,11 +993,17 @@ class NepiAiTargetingApp(object):
                                 bounding_box_3d_msg.box_rotation_rpy_deg.y = bbr.y
                                 bounding_box_3d_msg.box_rotation_rpy_deg.z = bbr.z
                                 # To Do Add Bounding Box 3D Data
+
+                                area_meters = bbe.y * bbe.z
+                                volume_meters = area_meters * bbe.x
+                                bounding_box_3d_msg.volume_meters = volume_meters
                                 bbs3d.append(bounding_box_3d_msg)
 
                                 # Now update range and bearing values based on transform
                                 target_range_m = math.sqrt(bbc.x**2 + bbc.y**2 + bbc.z**2)
                                 #nepi_msg.publishMsgWarn(self,str([bbc.x,bbc.y,bbc.z]))
+
+
                                 try:
                                   horz_ang = np.arctan(bbc.x/(bbc.y)) * 180/math.pi
                                   target_horz_angle_deg = np.sign(horz_ang) * (90 - abs(horz_ang)) - transform[5]
@@ -990,6 +1023,9 @@ class NepiAiTargetingApp(object):
                             target_data_msg.range_m=target_range_m
                             target_data_msg.azimuth_deg=target_horz_angle_deg
                             target_data_msg.elevation_deg=target_vert_angle_deg
+                            target_data_msg.area_pixels = area_pixels
+                            target_data_msg.area_ratio = area_ratio
+                            target_data_msg.area_meters = area_meters
                             tls.append(target_data_msg)
 
                             # Update Current Targets List
@@ -1008,39 +1044,53 @@ class NepiAiTargetingApp(object):
                                 'center_px': [box.xmax-box.xmin,box.ymax-box.ymin],
                                 'velocity_pxps': [0,0],
                                 'center_m': center_m,
+                                'area_pixels': area_pixels,
+                                'area_ratio': area_ratio,
+                                'area_meters': area_meters,
+                                'volume_meters': volume_meters,
                                 'velocity_mps': [0,0,0],
                                 'last_detection_timestamp': ros_timestamp                              
                                 }
                             active_targets_dict[target_uid] = current_targets_dict[target_uid]
 
+    #nepi_msg.publishMsgWarn(self,"Created active targets dict: " + str(active_targets_dict))
+    self.bbs_msg = bbs_msg
     self.active_targets_dict = active_targets_dict
     if current_targets_dict.keys() != self.current_targets_dict.keys():
         self.publish_targets()
     self.current_targets_dict = current_targets_dict
     #nepi_msg.publishMsgWarn(self,self.current_targets_dict)
-
     # Publish and Save 2D Bounding Boxes
     if len(bbs2d) > 0:
       bbs_msg.bounding_boxes = bbs2d
       if not nepi_ros.is_shutdown():
+
         self.targeting_boxes_2d_pub.publish(bbs_msg)
+        oc_msg = ObjectCount()
+        oc_msg.header = detect_header
+        oc_msg.count = len(bbs_msg.bounding_boxes)
+        self.box_count_pub.publish(oc_msg)
       # Save Data if it is time.
-        bbs_dict = dict()
-        bbs_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(bbs_msg.header.stamp)
-        bbs_dict['image_topic'] = bbs_msg.image_topic
-        bb_list = []
-        for ind, bb_msg in enumerate(bbs_msg.bounding_boxes):
-            bb_dict = dict()
-            bb_dict['class'] = bb_msg.Class
-            bb_dict['id'] = bb_msg.id
-            bb_dict['uid'] = bb_msg.uid
-            bb_dict['probability'] = bb_msg.probability
-            bb_dict['xmin'] = bb_msg.xmin
-            bb_dict['ymin'] = bb_msg.ymin
-            bb_dict['xmax'] = bb_msg.xmax
-            bb_dict['ymax'] = bb_msg.ymax
-            bb_list.append(bb_dict)
-        bbs_dict['bounding_boxes'] = bb_list
+      bbs_dict = dict()
+      bbs_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(bbs_msg.header.stamp)
+      bbs_dict['image_topic'] = bbs_msg.image_topic
+      bbs_dict['image_height'] = bbs_msg.image_height
+      bbs_dict['image_width'] = bbs_msg.image_width
+      bb_list = []
+      for ind, bb_msg in enumerate(bbs_msg.bounding_boxes):
+          bb_dict = dict()
+          bb_dict['class'] = bb_msg.Class
+          bb_dict['id'] = bb_msg.id
+          bb_dict['uid'] = bb_msg.uid
+          bb_dict['probability'] = bb_msg.probability
+          bb_dict['xmin'] = bb_msg.xmin
+          bb_dict['ymin'] = bb_msg.ymin
+          bb_dict['xmax'] = bb_msg.xmax
+          bb_dict['ymax'] = bb_msg.ymax
+          bb_dict['area_pixels'] = bb_msg.area_pixels
+          bb_dict['area_ratio'] = bb_msg.area_ratio
+          bb_list.append(bb_dict)
+      bbs_dict['bounding_boxes'] = bb_list
       nepi_save.save_dict2file(self,"targeting_boxes_2d",bbs_dict,ros_timestamp)
 
     # Publish and Save Target Localizations
@@ -1049,17 +1099,25 @@ class NepiAiTargetingApp(object):
       tls_msg.header = detect_header
       tls_msg.image_topic = self.current_image_topic
       tls_msg.image_header = self.current_image_header
+      tls_msg.image_height = bbs_msg.image_height
+      tls_msg.image_width = bbs_msg.image_width
       tls_msg.depth_topic = self.depth_map_topic
       tls_msg.depth_header = self.depth_map_header
       tls_msg.target_localizations = tls
 
       if not nepi_ros.is_shutdown():
         self.target_localizations_pub.publish(tls_msg)
+        tc_msg = ObjectCount()
+        tc_msg.header = detect_header
+        tc_msg.count = len(tls)
+        self.target_count_pub.publish(tc_msg)
       # Save Data if Time
       tls_dict = dict()
 
       tls_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(tls_msg.header.stamp)
       tls_dict['image_topic'] = tls_msg.image_topic
+      tls_dict['image_height'] = tls_msg.image_height
+      tls_dict['image_width'] = tls_msg.image_width
       tls_dict['depth_topic'] = tls_msg.depth_topic
       tl_list = []
       for ind, tl_msg in enumerate(tls_msg.target_localizations):
@@ -1072,6 +1130,8 @@ class NepiAiTargetingApp(object):
           tl_dict['azimuth_deg'] = tl_msg.azimuth_deg
           tl_dict['elevation_deg'] = tl_msg.elevation_deg
           tl_dict['covariance'] = tl_msg.position_covariance
+          tl_dict['area_pixels'] = tl_msg.area_pixels
+          tl_dict['area_ratio'] = tl_msg.area_ratio
           tl_list.append(tl_dict)
       tls_dict['target_locs'] = tl_list
       nepi_save.save_dict2file(self,'targeting_localizations',tls_dict,ros_timestamp)
@@ -1085,15 +1145,24 @@ class NepiAiTargetingApp(object):
       bb3s_msg.header = detect_header
       bb3s_msg.image_topic = self.current_image_topic
       bb3s_msg.image_header = self.current_image_header
+      bb3s_msg.image_height = bbs_msg.image_height
+      bb3s_msg.image_width = bbs_msg.image_width
       bb3s_msg.depth_map_header = self.depth_map_header
       bb3s_msg.depth_map_topic = self.depth_map_topic
       bb3s_msg.bounding_boxes_3d = bbs3d
       if not nepi_ros.is_shutdown():
         self.targeting_boxes_3d_pub.publish(bb3s_msg)
+        oc3_msg = ObjectCount()
+        oc3_msg.header = detect_header
+        oc3_msg.count = len(bbs3d)
+        self.box3d_count_pub.publish(oc3_msg)
+
       # Save Data if Time
       bb3s_dict = dict()
       bb3s_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(bb3s_msg.header.stamp)
       bb3s_dict['image_topic'] = bb3s_msg.image_topic
+      bb3s_dict['image_height'] = bb3s_msg.image_height
+      bb3s_dict['image_width'] = bb3s_msg.image_width
       bb3s_dict['depth_map_topic'] = bb3s_msg.depth_map_header_topic
       bb3_list = []
       for ind, bb3_msg in enumerate(bb3s_msg.bounding_boxes_3d):
@@ -1105,12 +1174,14 @@ class NepiAiTargetingApp(object):
           bb3_dict['box_center_m'] = bb3_msg.box_center_m
           bb3_dict['box_extent_xyz_m'] = box_extent_xyz_m
           bb3_dict['box_rotation_rpy_deg'] = box_rotation_rpy_deg
+          bb3_dict['volume_meters'] = bb3_msg.volume_meters
           bb3_list.append(bb3_dict)
       bb3s_dict['bounding_boxes_3d'] = bb3_list
       nepi_save.save_dict2file(self,'targeting_boxes_3d',bb3s_dict,ros_timestamp)
 
 
-  def targetingImageCb(self,img_in_msg):    
+  def targetingImageCb(self,img_in_msg):   
+    #nepi_msg.publishMsgWarn(self,"Got img_in_msg")
     data_product = 'targeting_image'
     if self.targeting_image_pub is not None:
         has_subscribers =  self.has_subscribers_target_img
@@ -1124,8 +1195,11 @@ class NepiAiTargetingApp(object):
         self.img_width = img_in_msg.width
         cv2_in_img = nepi_img.rosimg_to_cv2img(img_in_msg)
         cv2_img = copy.deepcopy(cv2_in_img)
+        cv2_shape = cv2_img.shape
+        self.img_width = cv2_shape[1] 
+        self.img_height = cv2_shape[0] 
         target_dict = copy.deepcopy(self.current_targets_dict)
-
+        #nepi_msg.publishMsgWarn(self,"Got overlay targets dict: " + str(target_dict))
         # Process Targeting Image if Needed
         if target_dict == None:
             target_dict = dict()
