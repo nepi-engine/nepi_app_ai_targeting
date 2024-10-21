@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>nepi_app_ai_targeting</name>
+  <name>nepi_app_ai_pt_tracker</name>
   <version>0.0.0</version>
-  <description>The ai targeting app package</description>
+  <description>The ai pantilt tracker app package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
