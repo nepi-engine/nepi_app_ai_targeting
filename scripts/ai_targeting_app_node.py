@@ -67,7 +67,7 @@ class NepiAiTargetingApp(object):
   FACTORY_TARGET_MIN_PX_RATIO=0.1 # Sets the minimum px range between two detections, largest box between two is selected
   FACTORY_TARGET_MIN_DIST_METERS=0.0 # Sets the minimum distance between to detections, closer target is selected
   FACTORY_TARGET_MAX_AGE_SEC=10 # Remove lost targets from dictionary if older than this age
-
+  FACTORY_USE_LAST_IMAGE = True
   FACTORY_OUTPUT_IMAGE = "Targeting_Image"
 
   ZERO_TRANSFORM = [0,0,0,0,0,0,0]
@@ -147,7 +147,8 @@ class NepiAiTargetingApp(object):
   img_width = 0 # Updated on receipt of first image
   img_height = 0 # Updated on receipt of first image
 
-
+  last_snapshot = time.time()
+  last_cv2_img = None
   #######################
   ### Node Initialization
   DEFAULT_NODE_NAME = "app_ai_targeting" # Can be overwitten by luanch command
@@ -204,6 +205,7 @@ class NepiAiTargetingApp(object):
 
     # App Specific Subscribers
     set_image_input_sub = rospy.Subscriber('~use_live_image', Bool, self.setImageLiveCb, queue_size = 10)
+    set_image_delay_sub = rospy.Subscriber('~use_last_image', Bool, self.setImageLastCb, queue_size = 10)
     add_all_sub = rospy.Subscriber('~add_all_target_classes', Empty, self.addAllClassesCb, queue_size = 10)
     remove_all_sub = rospy.Subscriber('~remove_all_target_classes', Empty, self.removeAllClassesCb, queue_size = 10)
     add_class_sub = rospy.Subscriber('~add_target_class', String, self.addClassCb, queue_size = 10)
@@ -258,6 +260,7 @@ class NepiAiTargetingApp(object):
   def resetApp(self):
     nepi_ros.set_param(self,'~last_classifier', "")
     nepi_ros.set_param(self,'~use_live_image',True)
+    nepi_ros.set_param(self,'~use_last_image',self.FACTORY_USE_LAST_IMAGE)
     nepi_ros.set_param(self,'~selected_classes_dict', dict())
     nepi_ros.set_param(self,'~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
     nepi_ros.set_param(self,'~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
@@ -288,6 +291,7 @@ class NepiAiTargetingApp(object):
       nepi_msg.publishMsgInfo(self," Setting init values to param values")
       self.init_last_classifier = nepi_ros.get_param(self,"~last_classifier", "")
       self.init_use_live_image = nepi_ros.get_param(self,'~use_live_image',True)
+      self.init_use_last_image = nepi_ros.get_param(self,'~use_last_image',self.FACTORY_USE_LAST_IMAGE)
       self.init_selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', dict())
       self.init_image_fov_vert = nepi_ros.get_param(self,'~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
       self.init_image_fov_horz = nepi_ros.get_param(self,'~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
@@ -303,6 +307,7 @@ class NepiAiTargetingApp(object):
   def resetParamServer(self,do_updates = True):
       nepi_ros.set_param(self,'~last_classiier', self.init_last_classifier)
       nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
+      nepi_ros.set_param(self,'~use_last_image',self.init_use_last_image)
       nepi_ros.set_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
       nepi_ros.set_param(self,'~image_fov_vert',  self.init_image_fov_vert)
       nepi_ros.set_param(self,'~image_fov_horz', self.init_image_fov_horz)
@@ -328,6 +333,7 @@ class NepiAiTargetingApp(object):
     status_msg.classifier_name = self.current_classifier
     status_msg.classifier_state = self.current_classifier_state
     status_msg.use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
+    status_msg.use_last_image = nepi_ros.get_param(self,'~use_last_image',self.init_use_last_image)    
     status_msg.image_topic = self.current_image_topic
     status_msg.has_depth_map = self.has_depth_map
     status_msg.depth_map_topic = self.depth_map_topic
@@ -559,7 +565,11 @@ class NepiAiTargetingApp(object):
       nepi_ros.set_param(self,'~use_live_image',live)
     self.publish_status()
 
-
+  def setImageLastCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    use_last = msg.data
+    nepi_ros.set_param(self,'~use_last_image',use_last)
+    self.publish_status()
 
   def addAllClassesCb(self,msg):
     ##nepi_msg.publishMsgInfo(self,msg)
@@ -1183,6 +1193,7 @@ class NepiAiTargetingApp(object):
   def targetingImageCb(self,img_in_msg):   
     #nepi_msg.publishMsgWarn(self,"Got img_in_msg")
     data_product = 'targeting_image'
+    use_last_img = nepi_ros.get_param(self,'~use_last_image',self.init_use_last_image)
     if self.targeting_image_pub is not None:
         has_subscribers =  self.has_subscribers_target_img
         saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
@@ -1191,19 +1202,21 @@ class NepiAiTargetingApp(object):
         save_data = (saving_is_enabled and data_should_save) or snapshot_enabled
         self.current_image_header = img_in_msg.header
         ros_timestamp = img_in_msg.header.stamp     
-        self.img_height = img_in_msg.height
-        self.img_width = img_in_msg.width
         cv2_in_img = nepi_img.rosimg_to_cv2img(img_in_msg)
-        cv2_img = copy.deepcopy(cv2_in_img)
-        cv2_shape = cv2_img.shape
-        self.img_width = cv2_shape[1] 
-        self.img_height = cv2_shape[0] 
+        if use_last_img:
+          cv2_img = copy.deepcopy(self.last_cv2_img)
+        else:
+          cv2_img = copy.deepcopy(cv2_in_img)
+        self.last_cv2_img = copy.deepcopy(cv2_in_img)
         target_dict = copy.deepcopy(self.current_targets_dict)
         #nepi_msg.publishMsgWarn(self,"Got overlay targets dict: " + str(target_dict))
         # Process Targeting Image if Needed
         if target_dict == None:
             target_dict = dict()
-        if len(target_dict.keys()) > 0:
+        if len(target_dict.keys()) > 0 and cv2_img is not None:
+            cv2_shape = cv2_img.shape
+            self.img_width = cv2_shape[1] 
+            self.img_height = cv2_shape[0] 
             for target_uid in target_dict.keys():
                 #nepi_msg.publishMsgWarn(self,target_dict[target_uid])
                 target = target_dict[target_uid]
@@ -1270,19 +1283,20 @@ class NepiAiTargetingApp(object):
                     fontColor,
                     thickness,
                     lineType)  
-        # Publish new image to ros
-        if not nepi_ros.is_shutdown() and has_subscribers: #and has_subscribers:
-            #Convert OpenCV image to ROS image
-            cv2_shape = cv2_img.shape
-            if  cv2_shape[2] == 3:
-              encode = 'bgr8'
-            else:
-              encode = 'mono8'
-            img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding=encode)
-            self.targeting_image_pub.publish(img_out_msg)
-        # Save Data if Time
-        if save_data:
-          nepi_save.save_img2file(self,data_product,cv2_img,ros_timestamp,save_check = False)
+        if cv2_img is not None:
+          # Publish new image to ros
+          if not nepi_ros.is_shutdown() and has_subscribers: #and has_subscribers:
+              #Convert OpenCV image to ROS image
+              cv2_shape = cv2_img.shape
+              if  cv2_shape[2] == 3:
+                encode = 'bgr8'
+              else:
+                encode = 'mono8'
+              img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding=encode)
+              self.targeting_image_pub.publish(img_out_msg)
+          # Save Data if Time
+          if save_data:
+            nepi_save.save_img2file(self,data_product,cv2_img,ros_timestamp,save_check = False)
 
 
 
