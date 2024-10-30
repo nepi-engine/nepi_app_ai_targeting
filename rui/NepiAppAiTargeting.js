@@ -424,6 +424,20 @@ class AppAiTargeting extends Component {
               </Column>
               <Column>
 
+
+              <ButtonMenu>
+            <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_app")}>{"Reset App"}</Button>
+          </ButtonMenu>
+
+            <ButtonMenu>
+              <Button onClick={() => sendTriggerMsg(appNamespace + "/save_config")}>{"Save Config"}</Button>
+        </ButtonMenu>
+
+        <ButtonMenu>
+              <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_config")}>{"Reset Config"}</Button>
+        </ButtonMenu>
+
+
           <Label title="Use Live Image">
               <Toggle
               checked={this.state.use_live_image===true}
@@ -438,17 +452,6 @@ class AppAiTargeting extends Component {
               </Toggle>
         </Label>
 
-              <ButtonMenu>
-            <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_app")}>{"Reset App"}</Button>
-          </ButtonMenu>
-
-            <ButtonMenu>
-              <Button onClick={() => sendTriggerMsg(appNamespace + "/save_config")}>{"Save Config"}</Button>
-        </ButtonMenu>
-
-        <ButtonMenu>
-              <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_config")}>{"Reset Config"}</Button>
-        </ButtonMenu>
 
 
               </Column>

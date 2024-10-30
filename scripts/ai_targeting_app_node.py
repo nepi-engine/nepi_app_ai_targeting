@@ -67,7 +67,7 @@ class NepiAiTargetingApp(object):
   FACTORY_TARGET_MIN_PX_RATIO=0.1 # Sets the minimum px range between two detections, largest box between two is selected
   FACTORY_TARGET_MIN_DIST_METERS=0.0 # Sets the minimum distance between to detections, closer target is selected
   FACTORY_TARGET_MAX_AGE_SEC=10 # Remove lost targets from dictionary if older than this age
-  FACTORY_USE_LAST_IMAGE = True
+  FACTORY_USE_LAST_IMAGE = False
   FACTORY_OUTPUT_IMAGE = "Targeting_Image"
 
   ZERO_TRANSFORM = [0,0,0,0,0,0,0]
@@ -149,6 +149,8 @@ class NepiAiTargetingApp(object):
 
   last_snapshot = time.time()
   last_cv2_img = None
+
+  reset_image_topic = False
   #######################
   ### Node Initialization
   DEFAULT_NODE_NAME = "app_ai_targeting" # Can be overwitten by luanch command
@@ -471,7 +473,8 @@ class NepiAiTargetingApp(object):
     #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
     if self.classifier_running:
       use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
-      if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None"):
+      if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None") or self.reset_image_topic == True:
+        self.reset_image_topic = False
         image_topic = ""
         if use_live_image:
           image_topic = nepi_ros.find_topic(self.current_image_topic)
@@ -481,20 +484,20 @@ class NepiAiTargetingApp(object):
         nepi_msg.publishMsgInfo(self," Got detect image update topic update : " + image_topic)
         update_status = True
         if image_topic != "":
-          self.targeting_running = True
-          update_status = True
           if self.image_sub != None:
             nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + image_topic)
             self.image_sub.unregister()
+            time.sleep(1)
             self.image_sub = None
+          nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
+          self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 1)
           time.sleep(1)
           if self.targeting_image_pub is None:
             #nepi_msg.publishMsgWarn(self," Creating Image publisher ")
             self.targeting_image_pub = rospy.Publisher("~image",Image,queue_size=1)
             time.sleep(1)
-          nepi_msg.publishMsgWarn(self," Subscribing to Image topic : " + image_topic)
-
-          self.image_sub = rospy.Subscriber(image_topic, Image, self.targetingImageCb, queue_size = 1)
+          self.targeting_running = True
+          update_status = True
       
           # Look for Depth Map
           depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
@@ -561,7 +564,7 @@ class NepiAiTargetingApp(object):
     live = msg.data
     current_live = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
     if live != current_live:
-      self.last_image_topic = None # Will force resubscribe later
+      self.reset_image_topic = True # Will force resubscribe later
       nepi_ros.set_param(self,'~use_live_image',live)
     self.publish_status()
 
@@ -1207,9 +1210,10 @@ class NepiAiTargetingApp(object):
         cv2_in_img = nepi_img.rosimg_to_cv2img(img_in_msg)
         if use_last_img:
           cv2_img = copy.deepcopy(self.last_cv2_img)
+          self.last_cv2_img = copy.deepcopy(cv2_in_img)
         else:
           cv2_img = copy.deepcopy(cv2_in_img)
-        self.last_cv2_img = copy.deepcopy(cv2_in_img)
+        
         if cv2_img is not None:
             cv2_shape = cv2_img.shape
             self.img_width = cv2_shape[1] 
