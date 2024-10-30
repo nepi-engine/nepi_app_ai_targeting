@@ -386,7 +386,7 @@ class AppAiTargeting extends Component {
         <Column>
         
 
-            <Label title="Select Class Filters"> </Label>
+            <Label title="Select Classes"> </Label>
 
                     <div onClick={this.toggleViewableTopics} style={{backgroundColor: Styles.vars.colors.grey0}}>
                       <Select style={{width: "10px"}}/>
@@ -661,27 +661,22 @@ class AppAiTargeting extends Component {
     return (
 
       <Columns>
-      <Column equalWidth={true}>
-
-      <div hidden={connected}>
+      <Column equalWidth={false}>
 
 
       <label style={{fontWeight: 'bold'}} align={"left"} textAlign={"left"}>
           {"Connecting"}
          </label>
-      
-      </div>
+    
 
-
-      <div hidden={!connected}>
 
       {this.renderImageViewer()}
 
-      </div>
+
       </Column>
       <Column>
 
-      <div hidden={!connected}>
+
       <AiDetectorMgr
               title={"Nepi_Mgr_AI_Detector"}
           />
@@ -692,7 +687,7 @@ class AppAiTargeting extends Component {
           saveNamespace={appNamespace}
           title={"Nepi_IF_SaveData"}
         />
-      </div>
+
 
       </Column>
       </Columns>

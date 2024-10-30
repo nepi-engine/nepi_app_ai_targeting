@@ -894,11 +894,11 @@ class NepiAiTargetingApp(object):
                     target_vert_angle_deg = (object_loc_y_ratio_from_center * float(image_fov_vert/2))
                     target_horz_angle_deg = - (object_loc_x_ratio_from_center * float(image_fov_horz/2))
                     ### Print the range and bearings for each detected object
-                ##      print(target_label)
-                ##      print(str(depth_box_adj.shape) + " detection box size")
-                ##      print(str(depth_len) + " valid depth readings")
-                ##      print("%.2f" % target_range_m + "m : " + "%.2f" % target_horz_angle_deg + "d : " + "%.2f" % target_vert_angle_deg + "d : ")
-                ##      print("")
+                    #nepi_msg.publishMsgWarn(self,"")
+                    #nepi_msg.publishMsgWarn(self,target_label)
+                    #nepi_msg.publishMsgWarn(self,str(depth_box_adj.shape) + " detection box size")
+                    #nepi_msg.publishMsgWarn(self,"%.2f" % target_range_m + "m : " + "%.2f" % target_horz_angle_deg + "d : " + "%.2f" % target_vert_angle_deg + "d : ")
+                    #nepi_msg.publishMsgWarn(self,"")
 
                     #### Filter targets based on center location and min_px_ratio
                     valid_2d_target = True
@@ -916,6 +916,8 @@ class NepiAiTargetingApp(object):
                             px_mmx_list.append(box_mmx_list[i2])
                             px_mmy_list.append(box_mmy_list[i2])
                             px_area_list.append(box_area_list[i2])
+
+
                     for i3, dist in enumerate(px_dist_list): # Check if target is valid
                         if px_area_list[i3] > box_area_list[i]:
                             dist_ratio = dist/ref_px_len
@@ -928,7 +930,7 @@ class NepiAiTargetingApp(object):
                                 cent_in_y = box_y > box_mmy_list[i3][0] and box_y < box_mmy_list[i3][1]
                                 if cent_in_x and cent_in_y: # Check if target center is within a bigger box
                                     valid_2d_target = False
-                    #nepi_msg.publishMsgWarn(self,"Target Valid: " + str(valid_2d_target))
+                    #nepi_msg.publishMsgWarn(self,"Target Valid: " + target_label + " " + str(valid_2d_target))
                     if valid_2d_target:
                         #### NEED TO Calculate Unique IDs
                         uid_suffix = 0
@@ -1208,15 +1210,16 @@ class NepiAiTargetingApp(object):
         else:
           cv2_img = copy.deepcopy(cv2_in_img)
         self.last_cv2_img = copy.deepcopy(cv2_in_img)
+        if cv2_img is not None:
+            cv2_shape = cv2_img.shape
+            self.img_width = cv2_shape[1] 
+            self.img_height = cv2_shape[0] 
         target_dict = copy.deepcopy(self.current_targets_dict)
         #nepi_msg.publishMsgWarn(self,"Got overlay targets dict: " + str(target_dict))
         # Process Targeting Image if Needed
         if target_dict == None:
             target_dict = dict()
         if len(target_dict.keys()) > 0 and cv2_img is not None:
-            cv2_shape = cv2_img.shape
-            self.img_width = cv2_shape[1] 
-            self.img_height = cv2_shape[0] 
             for target_uid in target_dict.keys():
                 #nepi_msg.publishMsgWarn(self,target_dict[target_uid])
                 target = target_dict[target_uid]
