@@ -90,7 +90,7 @@ class NepiAiTargetingApp(object):
 
 
   targeting_running = False
-  data_products = ["targeting_image",'targeting_image_depth',"targeting_boxes_2d","targeting_boxes_3d","targeting_localizations"]
+  data_products = ["targeting_image","target_boxes_2d","target_boxes_3d","target_localizations"]
   
   current_classifier = "None"
   current_classifier_state = "None"
@@ -117,7 +117,7 @@ class NepiAiTargetingApp(object):
 
   bbs_msg = None
   bb3s_msg = None
-  targeting_box_3d_list = None
+  target_box_3d_list = None
   class_color_list = []
 
   last_targeting_enable = False
@@ -180,9 +180,9 @@ class NepiAiTargetingApp(object):
     self.box3d_count_pub = rospy.Publisher("~boxes3d_count", ObjectCount, queue_size=1, latch=True)
     self.target_count_pub = rospy.Publisher("~target_count", ObjectCount, queue_size=1, latch=True)
 
-    self.targeting_boxes_2d_pub = rospy.Publisher("~targeting_boxes_2d", BoundingBoxes, queue_size=1)
-    self.targeting_boxes_3d_pub = rospy.Publisher("~targeting_boxes_3d", BoundingBoxes3D, queue_size=1)
-    self.target_localizations_pub = rospy.Publisher("~targeting_localizations", TargetLocalizations, queue_size=1)
+    self.target_boxes_2d_pub = rospy.Publisher("~target_boxes_2d", BoundingBoxes, queue_size=1)
+    self.target_boxes_3d_pub = rospy.Publisher("~target_boxes_3d", BoundingBoxes3D, queue_size=1)
+    self.target_localizations_pub = rospy.Publisher("~target_localizations", TargetLocalizations, queue_size=1)
     self.targeting_image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1, latch = True)
     time.sleep(1)
     # Publish a quick image
@@ -720,7 +720,7 @@ class NepiAiTargetingApp(object):
     if found_obj_msg.count == 0:
       #print("No objects detected")
       self.bbs_msg = None
-      self.targeting_box_3d_list = None
+      self.target_box_3d_list = None
       self.current_targets_dict = dict()
 
 
@@ -1080,7 +1080,7 @@ class NepiAiTargetingApp(object):
       bbs_msg.bounding_boxes = bbs2d
       if not nepi_ros.is_shutdown():
 
-        self.targeting_boxes_2d_pub.publish(bbs_msg)
+        self.target_boxes_2d_pub.publish(bbs_msg)
         oc_msg = ObjectCount()
         oc_msg.header = detect_header
         oc_msg.count = len(bbs_msg.bounding_boxes)
@@ -1106,7 +1106,7 @@ class NepiAiTargetingApp(object):
           bb_dict['area_ratio'] = bb_msg.area_ratio
           bb_list.append(bb_dict)
       bbs_dict['bounding_boxes'] = bb_list
-      nepi_save.save_dict2file(self,"targeting_boxes_2d",bbs_dict,ros_timestamp)
+      nepi_save.save_dict2file(self,"target_boxes_2d",bbs_dict,ros_timestamp)
 
     # Publish and Save Target Localizations
     if len(tls) > 0:
@@ -1149,10 +1149,10 @@ class NepiAiTargetingApp(object):
           tl_dict['area_ratio'] = tl_msg.area_ratio
           tl_list.append(tl_dict)
       tls_dict['target_locs'] = tl_list
-      nepi_save.save_dict2file(self,'targeting_localizations',tls_dict,ros_timestamp)
+      nepi_save.save_dict2file(self,'target_localizations',tls_dict,ros_timestamp)
 
     # Publish and Save 3D Bounding Boxes
-    self.targeting_box_3d_list = bbs3d
+    self.target_box_3d_list = bbs3d
     #nepi_msg.publishMsgWarn(self,"")
     #nepi_msg.publishMsgWarn(self,bbs3d)
     if len(bbs3d) > 0:
@@ -1166,7 +1166,7 @@ class NepiAiTargetingApp(object):
       bb3s_msg.depth_map_topic = self.depth_map_topic
       bb3s_msg.bounding_boxes_3d = bbs3d
       if not nepi_ros.is_shutdown():
-        self.targeting_boxes_3d_pub.publish(bb3s_msg)
+        self.target_boxes_3d_pub.publish(bb3s_msg)
         oc3_msg = ObjectCount()
         oc3_msg.header = detect_header
         oc3_msg.count = len(bbs3d)
@@ -1178,7 +1178,7 @@ class NepiAiTargetingApp(object):
       bb3s_dict['image_topic'] = bb3s_msg.image_topic
       bb3s_dict['image_height'] = bb3s_msg.image_height
       bb3s_dict['image_width'] = bb3s_msg.image_width
-      bb3s_dict['depth_map_topic'] = bb3s_msg.depth_map_header_topic
+      bb3s_dict['depth_map_topic'] = bb3s_msg.depth_map_topic
       bb3_list = []
       for ind, bb3_msg in enumerate(bb3s_msg.bounding_boxes_3d):
           bb3_dict = dict()
@@ -1187,12 +1187,12 @@ class NepiAiTargetingApp(object):
           bb3_dict['uid'] = bb3_msg.uid
           bb3_dict['probability'] = bb3_msg.probability
           bb3_dict['box_center_m'] = bb3_msg.box_center_m
-          bb3_dict['box_extent_xyz_m'] = box_extent_xyz_m
-          bb3_dict['box_rotation_rpy_deg'] = box_rotation_rpy_deg
+          bb3_dict['box_extent_xyz_m'] = bb3_msg.box_extent_xyz_m
+          bb3_dict['box_rotation_rpy_deg'] = bb3_msg.box_rotation_rpy_deg
           bb3_dict['volume_meters'] = bb3_msg.volume_meters
           bb3_list.append(bb3_dict)
       bb3s_dict['bounding_boxes_3d'] = bb3_list
-      nepi_save.save_dict2file(self,'targeting_boxes_3d',bb3s_dict,ros_timestamp)
+      nepi_save.save_dict2file(self,'target_boxes_3d',bb3s_dict,ros_timestamp)
 
 
   def targetingImageCb(self,img_in_msg):   
