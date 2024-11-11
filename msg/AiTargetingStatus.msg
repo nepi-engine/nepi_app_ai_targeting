@@ -1,11 +1,13 @@
+bool app_enabled
+string app_msg
+
+string image_topic
+float32 image_fov_vert_degs 
+float32 image_fov_horz_degs 
+
 bool classifier_running
 
-string classifier_name
-string classifier_state
 
-bool use_live_image
-bool use_last_image
-string image_topic
 bool has_depth_map
 string depth_map_topic
 bool has_pointcloud
@@ -15,8 +17,6 @@ string[] available_classes_list
 string[] selected_classes_list
 float32[] selected_classes_depth_list
 
-float32 image_fov_vert_degs 
-float32 image_fov_horz_degs 
 
 int32 target_box_size_percent 
 

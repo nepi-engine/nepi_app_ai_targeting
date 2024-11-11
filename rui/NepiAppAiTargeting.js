@@ -19,6 +19,7 @@ import Input from "./Input"
 import Select, { Option } from "./Select"
 import Styles from "./Styles"
 import Toggle from "react-toggle"
+import BooleanIndicator from "./BooleanIndicator"
 
 
 import AiDetectorMgr from "./NepiMgrAiDetector"
@@ -26,7 +27,7 @@ import CameraViewer from "./CameraViewer"
 import NepiIFSaveData from "./Nepi_IF_SaveData"
 
 
-import {round, convertStrToStrList, createMenuListFromStrList, onDropdownSelectedSendStr, onUpdateSetStateValue, onEnterSendFloatValue, onEnterSendIntValue, onEnterSetStateFloatValue} from "./Utilities"
+import {round, convertStrToStrList, createMenuListFromStrList, onDropdownSelectedSendStr, onUpdateSetStateValue, onEnterSendFloatValue, onEnterSendIntValue, onChangeSwitchStateValue, onEnterSetStateFloatValue} from "./Utilities"
 
 @inject("ros")
 @observer
@@ -42,13 +43,19 @@ class AppAiTargeting extends Component {
       appName: "app_ai_targeting",
       appNamespace: null,
 
-      classifier_running: false,
-      classifier_name: null,
-      classifier_state: null,
+      
+      app_enabled: false,
+      app_msg: "Connecting",
 
-      use_live_image: true,
-      use_last_image: true,
+      image_name: "targeting_image",
+      show_detector_box: false,
+
+      classifier_running: false,
+
       image_topic: null,
+      image_fov_vert_degs: null,
+      image_fov_horz_degs: null,
+
       depth_map_topic: null,
       pointcloud_topic: null,
 
@@ -59,9 +66,6 @@ class AppAiTargeting extends Component {
 
       available_targets_list: ['None'],
       selected_target: null,
-
-      image_fov_vert_degs: null,
-      image_fov_horz_degs: null,
 
       target_box_reduction_percent: null,
       default_target_depth_m: null,
@@ -76,9 +80,6 @@ class AppAiTargeting extends Component {
      
 
       viewableTopics: false,
-
-      output_image_options_list: ['Targeting_Image','Alert_Image'],
-      selected_output_image: 'None',
 
       transforms_topic_list: [],
       transforms_list: [],
@@ -125,17 +126,20 @@ class AppAiTargeting extends Component {
   // Callback for handling ROS Status messages
   statusListener(message) {
     this.setState({
+
+
+    app_enabled: message.app_enabled,
+    app_msg: message.app_msg,
+
     classifier_running: message.classifier_running,
 
-    classifier_name: message.classifier_name,
-    classifier_state: message.classifier_state,
-    use_live_image: message.use_live_image,
-    use_last_image: message.use_last_image,
     image_topic: message.image_topic,
-    depth_map_topic: message.depth_map_topic,
-    pointcloud_topic: message.pointcloud_topic,
     image_fov_vert_degs: message.image_fov_vert_degs,
     image_fov_horz_degs: message.image_fov_horz_degs,
+
+    depth_map_topic: message.depth_map_topic,
+    pointcloud_topic: message.pointcloud_topic,
+
     target_box_reduction_percent: message.target_box_reduction_percent,
     default_target_depth_m: message.default_target_depth_m,
     target_min_points: message.target_min_points,
@@ -370,23 +374,80 @@ class AppAiTargeting extends Component {
     this.render()
   }
 
- 
-
   renderApp() {
     const {sendBoolMsg, sendTriggerMsg,} = this.props.ros
-    const appNamespace = this.getAppNamespace()
     const classOptions = this.getClassOptions()
     const selectedClasses = this.state.selected_classes_list
     const NoneOption = <Option>None</Option>
     const classifier_running = this.state.classifier_running
+    const connected = this.state.connected === true
+    const appNamespace = this.getAppNamespace()
+    const classes_sel = selectedClasses.length > 0
+
     return (
       <Section title={"AI Targeting App"}>
 
         <Columns>
         <Column>
+
+
+        <Columns>
+          <Column>
+
+          <Label title="Enable App">
+              <Toggle
+              checked={this.state.app_enabled===true}
+              onClick={() => sendBoolMsg(appNamespace + "/enable_app",!this.state.app_enabled)}>
+              </Toggle>
+        </Label>
+
+
+            </Column>
+          <Column>
+
+  
+          </Column>
+        </Columns>
+
+
+
+        <pre style={{ height: "40px", overflowY: "auto" ,fontWeight: 'bold' , color: Styles.vars.colors.Green, textAlign: "left" }}>
+            {this.state.app_msg}
+          </pre>
+
+
+          <Columns>
+          <Column>
+
+
+      <Label title={"Classifier Running"}>
+        <BooleanIndicator value={this.state.classifier_running} />
+      </Label>
+
+
+            </Column>
+          <Column>
+
+          <Label title={"Target Classes Selected"}>
+        <BooleanIndicator value={classes_sel} />
+      </Label>
+          </Column>
+        </Columns>
+
+
+        <div hidden={!this.state.classifier_running || !this.state.app_enabled}>
+       
+        <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
+
+        <label style={{fontWeight: 'bold'}} align={"left"} textAlign={"left"}>
+          {"App Settings"}
+         </label>
+
+         <Columns>
+        <Column>
         
 
-            <Label title="Select Classes"> </Label>
+            <Label title="Select Class Filters"> </Label>
 
                     <div onClick={this.toggleViewableTopics} style={{backgroundColor: Styles.vars.colors.grey0}}>
                       <Select style={{width: "10px"}}/>
@@ -425,41 +486,9 @@ class AppAiTargeting extends Component {
               <Column>
 
 
-              <ButtonMenu>
-            <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_app")}>{"Reset App"}</Button>
-          </ButtonMenu>
-
-            <ButtonMenu>
-              <Button onClick={() => sendTriggerMsg(appNamespace + "/save_config")}>{"Save Config"}</Button>
-        </ButtonMenu>
-
-        <ButtonMenu>
-              <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_config")}>{"Reset Config"}</Button>
-        </ButtonMenu>
 
 
-          <Label title="Use Live Image">
-              <Toggle
-              checked={this.state.use_live_image===true}
-              onClick={() => sendBoolMsg(appNamespace + "/use_live_image",!this.state.use_live_image)}>
-              </Toggle>
-        </Label>
-
-        <Label title="Use Last Image">
-              <Toggle
-              checked={this.state.use_last_image===true}
-              onClick={() => sendBoolMsg(appNamespace + "/use_last_image",!this.state.use_last_image)}>
-              </Toggle>
-        </Label>
-
-
-
-              </Column>
-              </Columns>
-
-
-
-      <Label title={"Sensor Vertical Degrees"}>
+         <Label title={"Sensor Vertical Degrees"}>
           <Input id="image_fov_vert_degs" 
             value={this.state.image_fov_vert_degs} 
             onChange={(event) => onUpdateSetStateValue.bind(this)(event,"image_fov_vert_degs")} 
@@ -521,7 +550,8 @@ class AppAiTargeting extends Component {
           unit={"%"}
       />
 
-
+        </Column>
+        </Columns>
 
 
 
@@ -634,6 +664,49 @@ class AppAiTargeting extends Component {
       </div>
 
 
+
+
+
+
+      </div>
+
+
+
+
+
+
+      <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
+
+      <Columns>
+          <Column>
+
+            <ButtonMenu>
+              <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_app")}>{"Reset App"}</Button>
+            </ButtonMenu>
+
+            </Column>
+          <Column>
+
+              <ButtonMenu>
+                <Button onClick={() => sendTriggerMsg(appNamespace + "/save_config")}>{"Save Config"}</Button>
+          </ButtonMenu>
+
+          </Column>
+          <Column>
+
+          <ButtonMenu>
+                <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_config")}>{"Reset Config"}</Button>
+          </ButtonMenu>
+
+  
+          </Column>
+        </Columns>
+
+
+
+      </Column>
+        </Columns>
+
       </Section>
 
     
@@ -641,61 +714,71 @@ class AppAiTargeting extends Component {
   }
 
 
-  renderImageViewer(){
-    const connected = this.state.connected
-    const namespace = this.getAppNamespace()
-    const appNamespace = (connected) ? namespace: null
-    const imageNamespace = (connected) ? appNamespace + "/targeting_image" : null 
-    return (
-
-      <CameraViewer
-        imageTopic={imageNamespace}
-        title={this.state.selected_output_image}
-        hideQualitySelector={false}
-      />
-
-      )
-    }  
-
   render() {
-    const connected = this.state.connected
-    const namespace = this.getAppNamespace()
-    const appNamespace = (connected) ? namespace: null
+    const connected = this.state.connected === true
+    const appNamespace = (connected) ? this.getAppNamespace() : null
+    const show_detector_box = this.state.show_detector_box
+    const imageNamespace = appNamespace + '/' + this.state.image_name
+
     return (
 
       <Columns>
-      <Column equalWidth={false}>
+      <Column equalWidth={true}>
 
+       
 
-      <label style={{fontWeight: 'bold'}} align={"left"} textAlign={"left"}>
-          {"Connecting"}
-         </label>
-    
-
-
-      {this.renderImageViewer()}
+      <CameraViewer
+        imageTopic={imageNamespace}
+        title={this.state.image_name}
+        hideQualitySelector={false}
+      />
 
 
       </Column>
       <Column>
 
 
+      <Columns>
+      <Column>
+
+      <Label title="Show Detector Settings">
+              <Toggle
+              checked={(this.state.show_detector_box === true)}
+              onClick={() => onChangeSwitchStateValue.bind(this)("show_detector_box",this.state.show_detector_box)}>
+              </Toggle>
+        </Label>
+
+      </Column>
+      <Column>
+
+    </Column>
+    </Columns>
+
+
+
+      <div hidden={!show_detector_box}>
+
       <AiDetectorMgr
               title={"Nepi_Mgr_AI_Detector"}
           />
 
+      </div>
+
+
       {this.renderApp()}
+
+
+      <div hidden={!connected}>
 
         <NepiIFSaveData
           saveNamespace={appNamespace}
           title={"Nepi_IF_SaveData"}
         />
 
+      </div>
 
       </Column>
       </Columns>
-
-
 
       )
     }  
