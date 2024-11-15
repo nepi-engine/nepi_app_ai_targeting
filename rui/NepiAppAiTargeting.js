@@ -391,284 +391,284 @@ class AppAiTargeting extends Component {
         <Column>
 
 
-        <Columns>
-          <Column>
+                  <Columns>
+                  <Column>
 
-          <Label title="Enable App">
-              <Toggle
-              checked={this.state.app_enabled===true}
-              onClick={() => sendBoolMsg(appNamespace + "/enable_app",!this.state.app_enabled)}>
-              </Toggle>
-        </Label>
+                  <div hidden={(connected === true)}>
 
+                <pre style={{ height: "40px", overflowY: "auto" ,fontWeight: 'bold' , color: Styles.vars.colors.Green, textAlign: "left" }}>
+                    {"Loading"}
+                  </pre>
+
+                </div>
+
+                <div hidden={(connected === false)}>
+
+                  <Label title="Enable App">
+                      <Toggle
+                      checked={this.state.app_enabled===true}
+                      onClick={() => sendBoolMsg(appNamespace + "/enable_app",!this.state.app_enabled)}>
+                      </Toggle>
+                </Label>
+
+                </div>
+
+                    </Column>
+                  <Column>
+
+                  </Column>
+                </Columns>
+
+
+        <div hidden={(connected !== true || this.state.app_enabled !== true)}>
+
+
+
+              <Columns>
+              <Column>
+
+
+          <Label title={"Classifier Running"}>
+            <BooleanIndicator value={this.state.classifier_running} />
+          </Label>
+
+
+                </Column>
+              <Column>
+
+              <Label title={"Target Classes Selected"}>
+            <BooleanIndicator value={classes_sel} />
+          </Label>
+              </Column>
+            </Columns>
+
+          
+            <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
+
+            <label style={{fontWeight: 'bold'}} align={"left"} textAlign={"left"}>
+              {"App Settings"}
+            </label>
+
+            <Columns>
+            <Column>
+            
+
+                <Label title="Select Class Filters"> </Label>
+
+                        <div onClick={this.toggleViewableTopics} style={{backgroundColor: Styles.vars.colors.grey0}}>
+                          <Select style={{width: "10px"}}/>
+                        </div>
+                        <div hidden={this.state.viewableTopics === false}>
+                        {classOptions.map((Class) =>
+                        <div onClick={this.onToggleClassSelection}
+                          style={{
+                            textAlign: "center",
+                            padding: `${Styles.vars.spacing.xs}`,
+                            color: Styles.vars.colors.black,
+                            backgroundColor: (selectedClasses.includes(Class.props.value))? Styles.vars.colors.blue : Styles.vars.colors.grey0,
+                            cursor: "pointer",
+                            }}>
+                            <body class_name ={Class} style={{color: Styles.vars.colors.black}}>{Class}</body>
+                        </div>
+                        )}
+                        </div>
+
+
+
+                        <Label title="Select Target Filter"> </Label>
+
+                        <Select
+                          id="select_target"
+                          onChange={(event) => onDropdownSelectedSendStr.bind(this)(event, appNamespace + "/select_target")}
+                          value={this.state.selected_target}
+                        >
+                          {this.state.available_targets_list
+                            ? createMenuListFromStrList(this.state.available_targets_list, false, [],[],[])
+                            : NoneOption}
+                        </Select>
+
+
+                  </Column>
+                  <Column>
+
+
+
+
+            <Label title={"Sensor Vertical Degrees"}>
+              <Input id="image_fov_vert_degs" 
+                value={this.state.image_fov_vert_degs} 
+                onChange={(event) => onUpdateSetStateValue.bind(this)(event,"image_fov_vert_degs")} 
+                onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_image_fov_vert")} />
+            </Label>
+              
+            <Label title={"Sensor Horzontal Degrees"}>
+              <Input id="image_fov_horz_degs" 
+                value={this.state.image_fov_horz_degs} 
+                onChange={(event) => onUpdateSetStateValue.bind(this)(event,"image_fov_vert_degs")} 
+                onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_image_fov_horz")} />
+            </Label>
+
+            <Label title={"Default Target Depth (m)"}>
+              <Input id="default_target_depth_m" 
+                value={this.state.default_target_depth_m} 
+                onChange={(event) => onUpdateSetStateValue.bind(this)(event,"default_target_depth_m")} 
+                onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_default_target_detpth")} />
+            </Label>
+
+            <Label title={"Target Min Points"}>
+              <Input id="target_min_points" 
+                value={this.state.target_min_points} 
+                onChange={(event) => onUpdateSetStateValue.bind(this)(event,"target_min_points")} 
+                onKeyDown= {(event) => onEnterSendIntValue.bind(this)(event,appNamespace + "/set_target_min_points")} />
+            </Label>
+
+            <Label title={"Target Min Dist (m)"}>
+              <Input id="target_min_dist_m" 
+                value={this.state.target_min_dist_m} 
+                onChange={(event) => onUpdateSetStateValue.bind(this)(event,"target_min_dist_m")} 
+                onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_target_min_dist_meters")} />
+            </Label>
+
+            <Label title={"Target Age Filter"}>
+              <Input id="target_age_filter" 
+                value={this.state.target_age_filter} 
+                onChange={(event) => onUpdateSetStateValue.bind(this)(event,"target_age_filter")} 
+                onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_age_filter")} />
+            </Label>
+
+            <Label title={"Set Box Adjust %"}>
+              <Input id="target_box_size_percent" 
+                value={this.state.target_box_size_percent} 
+                onChange={(event) => onUpdateSetStateValue.bind(this)(event,"target_box_size_percent")} 
+                onKeyDown= {(event) => onEnterSendIntValue.bind(this)(event,appNamespace + "/set_target_box_size_percent")} />
+            </Label>
+
+
+            <SliderAdjustment
+              title={"Target Min Pixel Ratio"}
+              msgType={"std_msgs/float32"}
+              adjustment={this.state.target_min_px_ratio}
+              topic={appNamespace + "/set_target_min_px_ratio"}
+              scaled={0.01}
+              min={0}
+              max={100}
+              tooltip={""}
+              unit={"%"}
+          />
 
             </Column>
-          <Column>
+            </Columns>
 
-  
-          </Column>
+
+
+
+        <Columns>
+        <Column>
+
+        <Label title="Show 3D Transforms">
+        <Toggle
+          checked={this.state.showTransforms}
+          onClick={this.onClickToggleShowTransforms}>
+        </Toggle>
+      </Label>
+
+        </Column>
+        <Column>
+
+        </Column>
         </Columns>
 
 
 
-        <pre style={{ height: "40px", overflowY: "auto" ,fontWeight: 'bold' , color: Styles.vars.colors.Green, textAlign: "left" }}>
-            {this.state.app_msg}
-          </pre>
 
+
+
+        <div hidden={ this.state.showTransforms === false}>
 
           <Columns>
           <Column>
 
-
-      <Label title={"Classifier Running"}>
-        <BooleanIndicator value={this.state.classifier_running} />
-      </Label>
-
-
-            </Column>
-          <Column>
-
-          <Label title={"Target Classes Selected"}>
-        <BooleanIndicator value={classes_sel} />
-      </Label>
-          </Column>
-        </Columns>
-
-
-        <div hidden={!this.state.classifier_running || !this.state.app_enabled}>
-       
-        <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
-
-        <label style={{fontWeight: 'bold'}} align={"left"} textAlign={"left"}>
-          {"App Settings"}
-         </label>
-
-         <Columns>
-        <Column>
-        
-
-            <Label title="Select Class Filters"> </Label>
-
-                    <div onClick={this.toggleViewableTopics} style={{backgroundColor: Styles.vars.colors.grey0}}>
-                      <Select style={{width: "10px"}}/>
-                    </div>
-                    <div hidden={this.state.viewableTopics === false}>
-                    {classOptions.map((Class) =>
-                    <div onClick={this.onToggleClassSelection}
-                      style={{
-                        textAlign: "center",
-                        padding: `${Styles.vars.spacing.xs}`,
-                        color: Styles.vars.colors.black,
-                        backgroundColor: (selectedClasses.includes(Class.props.value))? Styles.vars.colors.blue : Styles.vars.colors.grey0,
-                        cursor: "pointer",
-                        }}>
-                        <body class_name ={Class} style={{color: Styles.vars.colors.black}}>{Class}</body>
-                    </div>
-                    )}
-                    </div>
-
-
-
-                    <Label title="Select Target Filter"> </Label>
-
-                    <Select
-                      id="select_target"
-                      onChange={(event) => onDropdownSelectedSendStr.bind(this)(event, appNamespace + "/select_target")}
-                      value={this.state.selected_target}
-                    >
-                      {this.state.available_targets_list
-                        ? createMenuListFromStrList(this.state.available_targets_list, false, [],[],[])
-                        : NoneOption}
-                    </Select>
-
-
-              </Column>
-              <Column>
-
-
-
-
-         <Label title={"Sensor Vertical Degrees"}>
-          <Input id="image_fov_vert_degs" 
-            value={this.state.image_fov_vert_degs} 
-            onChange={(event) => onUpdateSetStateValue.bind(this)(event,"image_fov_vert_degs")} 
-            onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_image_fov_vert")} />
-        </Label>
-           
-        <Label title={"Sensor Horzontal Degrees"}>
-          <Input id="image_fov_horz_degs" 
-            value={this.state.image_fov_horz_degs} 
-            onChange={(event) => onUpdateSetStateValue.bind(this)(event,"image_fov_vert_degs")} 
-            onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_image_fov_horz")} />
-        </Label>
-
-        <Label title={"Default Target Depth (m)"}>
-          <Input id="default_target_depth_m" 
-            value={this.state.default_target_depth_m} 
-            onChange={(event) => onUpdateSetStateValue.bind(this)(event,"default_target_depth_m")} 
-            onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_default_target_detpth")} />
-        </Label>
-
-        <Label title={"Target Min Points"}>
-          <Input id="target_min_points" 
-            value={this.state.target_min_points} 
-            onChange={(event) => onUpdateSetStateValue.bind(this)(event,"target_min_points")} 
-            onKeyDown= {(event) => onEnterSendIntValue.bind(this)(event,appNamespace + "/set_target_min_points")} />
-        </Label>
-
-        <Label title={"Target Min Dist (m)"}>
-          <Input id="target_min_dist_m" 
-            value={this.state.target_min_dist_m} 
-            onChange={(event) => onUpdateSetStateValue.bind(this)(event,"target_min_dist_m")} 
-            onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_target_min_dist_meters")} />
-        </Label>
-
-        <Label title={"Target Age Filter"}>
-          <Input id="target_age_filter" 
-            value={this.state.target_age_filter} 
-            onChange={(event) => onUpdateSetStateValue.bind(this)(event,"target_age_filter")} 
-            onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_age_filter")} />
-        </Label>
-
-        <Label title={"Set Box Adjust %"}>
-          <Input id="target_box_size_percent" 
-            value={this.state.target_box_size_percent} 
-            onChange={(event) => onUpdateSetStateValue.bind(this)(event,"target_box_size_percent")} 
-            onKeyDown= {(event) => onEnterSendIntValue.bind(this)(event,appNamespace + "/set_target_box_size_percent")} />
-        </Label>
-
-
-        <SliderAdjustment
-          title={"Target Min Pixel Ratio"}
-          msgType={"std_msgs/float32"}
-          adjustment={this.state.target_min_px_ratio}
-          topic={appNamespace + "/set_target_min_px_ratio"}
-          scaled={0.01}
-          min={0}
-          max={100}
-          tooltip={""}
-          unit={"%"}
-      />
-
-        </Column>
-        </Columns>
-
-
-
-
-    <Columns>
-    <Column>
-
-    <Label title="Show 3D Transforms">
-    <Toggle
-      checked={this.state.showTransforms}
-      onClick={this.onClickToggleShowTransforms}>
-    </Toggle>
-  </Label>
-
-    </Column>
-    <Column>
-
-    </Column>
-    </Columns>
-
-
-
-
-
-
-    <div hidden={ this.state.showTransforms === false}>
-
-      <Columns>
-      <Column>
-
-      <Label title={"X (m)"}>
-            <Input
-              value={this.state.transformTX}
-              id="XTranslation"
-              onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformTX")}
-              onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformTX")}
-              style={{ width: "80%" }}
-            />
-          </Label>
-
-          <Label title={"Y (m)"}>
-            <Input
-              value={this.state.transformTY}
-              id="YTranslation"
-              onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformTY")}
-              onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformTY")}
-              style={{ width: "80%" }}
-            />
-          </Label>
-
-          <Label title={"Z (m)"}>
-            <Input
-              value={this.state.transformTZ}
-              id="ZTranslation"
-              onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformTZ")}
-              onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformTZ")}
-              style={{ width: "80%" }}
-            />
-          </Label>
-
-
-          <ButtonMenu>
-            <Button onClick={() => this.sendTransformUpdateMessage()}>{"Update Transform"}</Button>
-          </ButtonMenu>
-
-
-        </Column>
-        <Column>
-
-          <Label title={"Roll (deg)"}>
-            <Input
-              value={this.state.transformRX}
-              id="XRotation"
-              onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformRX")}
-              onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformRX")}
-              style={{ width: "80%" }}
-            />
-          </Label>
-
-          <Label title={"Pitch (deg)"}>
-            <Input
-              value={this.state.transformRY}
-              id="YRotation"
-              onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformRY")}
-              onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformRY")}
-              style={{ width: "80%" }}
-            />
-          </Label>
-
-              <Label title={"Yaw (deg)"}>
+          <Label title={"X (m)"}>
                 <Input
-                  value={this.state.transformRZ}
-                  id="ZRotation"
-                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformRZ")}
-                  onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformRZ")}
+                  value={this.state.transformTX}
+                  id="XTranslation"
+                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformTX")}
+                  onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformTX")}
+                  style={{ width: "80%" }}
+                />
+              </Label>
+
+              <Label title={"Y (m)"}>
+                <Input
+                  value={this.state.transformTY}
+                  id="YTranslation"
+                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformTY")}
+                  onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformTY")}
+                  style={{ width: "80%" }}
+                />
+              </Label>
+
+              <Label title={"Z (m)"}>
+                <Input
+                  value={this.state.transformTZ}
+                  id="ZTranslation"
+                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformTZ")}
+                  onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformTZ")}
                   style={{ width: "80%" }}
                 />
               </Label>
 
 
               <ButtonMenu>
-            <Button onClick={() => this.sendClearTransformUpdateMessage()}>{"Clear Transform"}</Button>
-          </ButtonMenu>
+                <Button onClick={() => this.sendTransformUpdateMessage()}>{"Update Transform"}</Button>
+              </ButtonMenu>
+
+
+            </Column>
+            <Column>
+
+              <Label title={"Roll (deg)"}>
+                <Input
+                  value={this.state.transformRX}
+                  id="XRotation"
+                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformRX")}
+                  onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformRX")}
+                  style={{ width: "80%" }}
+                />
+              </Label>
+
+              <Label title={"Pitch (deg)"}>
+                <Input
+                  value={this.state.transformRY}
+                  id="YRotation"
+                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformRY")}
+                  onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformRY")}
+                  style={{ width: "80%" }}
+                />
+              </Label>
+
+                  <Label title={"Yaw (deg)"}>
+                    <Input
+                      value={this.state.transformRZ}
+                      id="ZRotation"
+                      onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"transformRZ")}
+                      onKeyDown= {(event) => onEnterSetStateFloatValue.bind(this)(event,"transformRZ")}
+                      style={{ width: "80%" }}
+                    />
+                  </Label>
+
+
+                  <ButtonMenu>
+                <Button onClick={() => this.sendClearTransformUpdateMessage()}>{"Clear Transform"}</Button>
+              </ButtonMenu>
 
 
 
-      </Column>
-      </Columns>
+          </Column>
+          </Columns>
 
-      </div>
+          </div>
 
-
-
-
-
-
-      </div>
 
 
 
@@ -702,7 +702,7 @@ class AppAiTargeting extends Component {
           </Column>
         </Columns>
 
-
+        </div>
 
       </Column>
         </Columns>

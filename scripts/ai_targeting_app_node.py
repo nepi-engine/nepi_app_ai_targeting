@@ -148,10 +148,16 @@ class NepiAiTargetingApp(object):
   reset_image_topic = False
   app_enabled = False
   app_msg = "App not enabled"
+  
   img_acquire = False
   img_msg = None
   last_img_msg = None
   img_lock = threading.Lock()
+
+
+  target_boxes_acquire = False
+  target_boxes = None
+  target_boxes_lock = threading.Lock()
   #######################
   ### Node Initialization
   DEFAULT_NODE_NAME = "app_ai_targeting" # Can be overwitten by luanch command
@@ -186,6 +192,7 @@ class NepiAiTargetingApp(object):
     message = "APP NOT ENABLED"
     cv2_img = nepi_img.create_message_image(message)
     self.app_ne_img = nepi_img.cv2img_to_rosimg(cv2_img)
+    self.app_ne_img.header.stamp = nepi_ros.time_now()
     self.image_pub.publish(self.app_ne_img)
 
     message = "WAITING FOR AI DETECTOR TO START"
@@ -415,6 +422,7 @@ class NepiAiTargetingApp(object):
  
 
   def updaterCb(self,timer):
+    self.last_image_topic = self.current_image_topic
     update_status = True
     app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
     app_msg = ""
@@ -429,101 +437,106 @@ class NepiAiTargetingApp(object):
         self.image_sub = None
     else:
       app_msg += "App enabled"
-      # Update classifier info
-      ai_mgr_status_response = None
-      try:
-        ai_mgr_status_response = self.get_ai_mgr_status_service()
-        #nepi_msg.publishMsgInfo(self," Got classifier status  " + str(ai_mgr_status_response))
-      except Exception as e:
-        nepi_msg.publishMsgWarn(self,"Failed to call AI MGR STATUS service" + str(e))
-        self.classifier_running = False
-        nepi_ros.set_param(self,'~last_classiier', "")
-        app_msg += ", AI Detector not connected"
-      if ai_mgr_status_response != None:
-        app_msg += ", AI Detector connected"
-        #status_str = str(ai_mgr_status_response)
-        #nepi_msg.publishMsgWarn(self," got ai manager status: " + status_str)
-        self.current_image_topic = ai_mgr_status_response.selected_img_topic
-        self.current_classifier = ai_mgr_status_response.selected_classifier
-        self.current_classifier_state = ai_mgr_status_response.classifier_state
-        self.classifier_running = self.current_classifier_state == "Running"
-        classes_list = ai_mgr_status_response.selected_classifier_classes
-        if classes_list != self.classes_list:
-          self.classes_list = classes_list
-          if len(self.classes_list) > 0:
-            cmap = plt.get_cmap('viridis')
-            color_list = cmap(np.linspace(0, 1, len(self.classes_list))).tolist()
-            rgb_list = []
-            for color in color_list:
-              rgb = []
-              for i in range(3):
-                rgb.append(int(color[i]*255))
-              rgb_list.append(rgb)
-            self.class_color_list = rgb_list
-            #nepi_msg.publishMsgWarn(self,self.class_color_list)
-          #classes_str = str(self.classes_list)
-          #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
-          update_status = True
-        selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
-        #nepi_msg.publishMsgWarn(self," Got selected_classes dict: " + str(selected_classes_dict))
-        selected_clasess = list(selected_classes_dict.keys())
-        last_classifier = nepi_ros.get_param(self,'~last_classiier', self.init_last_classifier)
-        if last_classifier != self.current_classifier and self.current_classifier != "None":
-          selected_classes = [] # Reset classes to all on new classifier
-          update_status = True
-        nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
-        #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
 
-        # Update Image Topic Subscriber
-        if self.classifier_running == False:
-          app_msg += ", Classifier not running"
-          self.target_detected = False
-        else:
-          app_msg += ", Classifier running"
-          if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None") or self.reset_image_topic == True:
-            self.reset_image_topic = False
-            image_topic = nepi_ros.find_topic(self.current_image_topic)
-            if image_topic == "":
-              nepi_msg.publishMsgWarn(self," Could not find image update topic: " + self.current_image_topic)
-              self.image_pub.publish(self.classifier_nr_img)
+    # Update classifier info
+    ai_mgr_status_response = None
+    try:
+      ai_mgr_status_response = self.get_ai_mgr_status_service()
+      #nepi_msg.publishMsgInfo(self," Got classifier status  " + str(ai_mgr_status_response))
+    except Exception as e:
+      nepi_msg.publishMsgWarn(self,"Failed to call AI MGR STATUS service" + str(e))
+      self.classifier_running = False
+      nepi_ros.set_param(self,'~last_classiier', "")
+      app_msg += ", AI Detector not connected"
+    if ai_mgr_status_response != None:
+      app_msg += ", AI Detector connected"
+      #status_str = str(ai_mgr_status_response)
+      #nepi_msg.publishMsgWarn(self," got ai manager status: " + status_str)
+      self.current_image_topic = ai_mgr_status_response.selected_img_topic
+      self.current_classifier = ai_mgr_status_response.selected_classifier
+      self.current_classifier_state = ai_mgr_status_response.classifier_state
+      self.classifier_running = self.current_classifier_state == "Running"
+      classes_list = ai_mgr_status_response.selected_classifier_classes
+      if classes_list != self.classes_list:
+        self.classes_list = classes_list
+        if len(self.classes_list) > 0:
+          cmap = plt.get_cmap('viridis')
+          color_list = cmap(np.linspace(0, 1, len(self.classes_list))).tolist()
+          rgb_list = []
+          for color in color_list:
+            rgb = []
+            for i in range(3):
+              rgb.append(int(color[i]*255))
+            rgb_list.append(rgb)
+          self.class_color_list = rgb_list
+          #nepi_msg.publishMsgWarn(self,self.class_color_list)
+        #classes_str = str(self.classes_list)
+        #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
+        update_status = True
+      selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+      #nepi_msg.publishMsgWarn(self," Got selected_classes dict: " + str(selected_classes_dict))
+      selected_clasess = list(selected_classes_dict.keys())
+      last_classifier = nepi_ros.get_param(self,'~last_classiier', self.init_last_classifier)
+      if last_classifier != self.current_classifier and self.current_classifier != "None":
+        selected_classes = [] # Reset classes to all on new classifier
+        update_status = True
+      nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
+      #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
+
+      # Update Image Topic Subscriber
+      if self.classifier_running == False:
+        app_msg += ", Classifier not running"
+        self.target_detected = False
+        self.current_image_topic = "None"
+      else:
+        app_msg += ", Classifier running"
+        if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None") or self.reset_image_topic == True:
+          self.reset_image_topic = False
+          image_topic = nepi_ros.find_topic(self.current_image_topic)
+          if image_topic == "":
+            nepi_msg.publishMsgWarn(self," Could not find image update topic: " + self.current_image_topic)
+            self.image_pub.publish(self.classifier_nr_img)
+          elif app_enabled == True:
+            nepi_msg.publishMsgInfo(self," Found detect Image update topic : " + image_topic)
+            update_status = True
+            if self.image_sub != None:
+              nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.last_image_topic)
+              self.image_sub.unregister()
+              time.sleep(1)
+              self.image_sub = None
+            nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
+            self.image_sub = rospy.Subscriber(image_topic, Image, self.imageCb, queue_size = 1)
+
+            # Look for Depth Map
+            depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
+            depth_map_topic = nepi_ros.find_topic(depth_map_topic)
+            if depth_map_topic == "":
+              depth_map_topic = "None"
+              self.has_depth_map = False
             else:
-              nepi_msg.publishMsgInfo(self," Found detect Image update topic : " + image_topic)
-              update_status = True
-              if self.image_sub != None:
-                nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.last_image_topic)
-                self.image_sub.unregister()
+              self.has_depth_map = True
+            self.depth_map_topic = depth_map_topic
+            #nepi_msg.publishMsgWarn(self,self.depth_map_topic)
+            if depth_map_topic != "None":
+              if self.depth_map_sub != None:
+                self.depth_map_sub.unregister()
+                self.depth_map_sub = None
                 time.sleep(1)
-                self.image_sub = None
-              nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
-              self.image_sub = rospy.Subscriber(image_topic, Image, self.imageCb, queue_size = 1)
-
-              # Look for Depth Map
-              depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
-              depth_map_topic = nepi_ros.find_topic(depth_map_topic)
-              if depth_map_topic == "":
-                depth_map_topic = "None"
-                self.has_depth_map = False
+              nepi_msg.publishMsgInfo(self," Subscribing to Depth Map topic : " + depth_map_topic)
+              self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
+              update_status = True
+              # If there is a depth_map, check for pointdcloud
+              pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
+              pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
+              if pointcloud_topic == "":
+                pointcloud_topic = "None"
+                self.has_pointcloud = False
               else:
-                self.has_depth_map = True
-              self.depth_map_topic = depth_map_topic
-              #nepi_msg.publishMsgWarn(self,self.depth_map_topic)
-              if depth_map_topic != "None":
-                if self.depth_map_sub != None:
-                  self.depth_map_sub.unregister()
-                  self.depth_map_sub = None
-                  time.sleep(1)
-                nepi_msg.publishMsgInfo(self," Subscribing to Depth Map topic : " + depth_map_topic)
-                self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
-                update_status = True
-                # If there is a depth_map, check for pointdcloud
-                pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
-                pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
-                if pointcloud_topic == "":
-                  pointcloud_topic = "None"
-                  self.has_pointcloud = False
-                else:
-                  self.has_pointcloud = True
-                self.pointcloud_topic = pointcloud_topic
+                self.has_pointcloud = True
+              self.pointcloud_topic = pointcloud_topic
+
+          else:
+            self.last_image_topic = ""
 
 
           if self.current_image_topic == "None" or self.current_image_topic == "":  # Reset last image topic
@@ -535,11 +548,11 @@ class NepiAiTargetingApp(object):
               update_status = True
               time.sleep(1)
       # Publish warning image if enabled and classifier not running
-      if self.classifier_running == False or self.image_sub == None:
+      if self.classifier_running == False and app_enabled == True:
         self.classifier_nr_img.header.stamp = nepi_ros.time_now()
         self.image_pub.publish(self.classifier_nr_img)
       # Save last image topic for next check
-      self.last_image_topic = self.current_image_topic
+
 
       # Update Current Targets List based on Age and Publish
       current_timestamp = nepi_ros.get_rostime()
@@ -1227,6 +1240,7 @@ class NepiAiTargetingApp(object):
       self.img_msg = None # Clear the last image        
       self.img_lock.release()
       
+      
       if len(tls) == 0:
         if img_in_msg is not None and not nepi_ros.is_shutdown():
           self.image_pub.publish(img_in_msg)
@@ -1320,11 +1334,10 @@ class NepiAiTargetingApp(object):
           nepi_save.save_img2file(self,'targeting_image',cv2_img,ros_timestamp,save_check = True)
 
 
-  def imageCb(self,image_msg):    
+  def imageCb(self,img_msg):    
       self.img_lock.acquire()
-      self.img_msg = copy.deepcopy(self.last_img_msg)
+      self.img_msg = img_msg
       self.img_lock.release()
-      self.last_img_msg = copy.deepcopy(image_msg)
 
 
 
