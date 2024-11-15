@@ -119,6 +119,10 @@ class AppAiTargeting extends Component {
     var appNamespace = null
     if (namespacePrefix !== null && deviceId !== null){
       appNamespace = "/" + namespacePrefix + "/" + deviceId + "/" + this.state.appName
+      if (this.state.connected === false){
+        const pub_status_topic = appNamespace + "/publish_status"
+        this.props.ros.sendTriggerMsg(pub_status_topic)
+      }
     }
     return appNamespace
   }
@@ -382,7 +386,7 @@ class AppAiTargeting extends Component {
     const classifier_running = this.state.classifier_running
     const connected = this.state.connected === true
     const appNamespace = this.getAppNamespace()
-    const classes_sel = selectedClasses.length > 0
+    const classes_sel = selectedClasses[0] !== "" && selectedClasses[0] !== "None"
 
     return (
       <Section title={"AI Targeting App"}>

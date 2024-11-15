@@ -217,6 +217,7 @@ class NepiAiTargetingApp(object):
     self.initParamServerValues(do_updates=False)
 
     # App Specific Subscribers
+    rospy.Subscriber('~publish_status', Empty, self.pubStatusCb, queue_size = 10)
     rospy.Subscriber('~enable_app', Bool, self.appEnableCb, queue_size = 10)
 
     rospy.Subscriber("~set_image_fov_vert", Float32, self.setVertFovCb, queue_size = 10)
@@ -423,7 +424,7 @@ class NepiAiTargetingApp(object):
 
   def updaterCb(self,timer):
     self.last_image_topic = self.current_image_topic
-    update_status = True
+    update_status = False
     app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
     app_msg = ""
     if app_enabled == False:
@@ -498,12 +499,13 @@ class NepiAiTargetingApp(object):
             self.image_pub.publish(self.classifier_nr_img)
           elif app_enabled == True:
             nepi_msg.publishMsgInfo(self," Found detect Image update topic : " + image_topic)
-            update_status = True
             if self.image_sub != None:
               nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.last_image_topic)
               self.image_sub.unregister()
+              update_status = True
               time.sleep(1)
               self.image_sub = None
+
             nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
             self.image_sub = rospy.Subscriber(image_topic, Image, self.imageCb, queue_size = 1)
 
@@ -524,7 +526,7 @@ class NepiAiTargetingApp(object):
                 time.sleep(1)
               nepi_msg.publishMsgInfo(self," Subscribing to Depth Map topic : " + depth_map_topic)
               self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
-              update_status = True
+              
               # If there is a depth_map, check for pointdcloud
               pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
               pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
@@ -575,7 +577,6 @@ class NepiAiTargetingApp(object):
           lost_targets_dict[target] = active_targets_dict[target]
           nepi_msg.publishMsgInfo(self," Purging target: " + target + " from active target list")
           del active_targets_dict[target]
-          update_status = True
       self.active_targets_dict = active_targets_dict
       self.lost_targets_dict = lost_targets_dict
       self.publish_targets()
@@ -589,6 +590,7 @@ class NepiAiTargetingApp(object):
         nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.current_image_topic)
         self.image_sub.unregister()
         self.image_sub = None
+        update_status = True
       if self.depth_map_sub != None:
         self.depth_map_sub.unregister()
         self.has_depth_map = False
@@ -596,7 +598,6 @@ class NepiAiTargetingApp(object):
       self.depth_map_topic = "None"
       self.has_pointcloud = False
       self.pointcloud_topic = "None"
-      update_status = True
       time.sleep(1)
 
 
@@ -609,6 +610,10 @@ class NepiAiTargetingApp(object):
 
   ###################
   ## AI App Callbacks
+  def pubStatusCb(self,msg):
+    self.publish_status()
+
+
 
   def appEnableCb(self,msg):
     #nepi_msg.publishMsgInfo(self,msg)
