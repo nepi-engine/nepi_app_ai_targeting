@@ -159,7 +159,7 @@ class NepiAiTargetingApp(object):
 
 
   target_locs_acquire = False
-  target_locs = None
+  target_locs = []
   target_locs_lock = threading.Lock()
 
   img_has_subs = False
@@ -1279,6 +1279,7 @@ class NepiAiTargetingApp(object):
     elif has_subscribers or saving_is_enabled or snapshot_enabled:
       self.img_lock.acquire()
       img_msg = copy.deepcopy(self.img_msg)
+      self.img_msg = None
       self.img_lock.release()
       if img_msg is not None:
         self.target_locs_lock.acquire()
@@ -1297,6 +1298,7 @@ class NepiAiTargetingApp(object):
           
             for target_loc in tls:
               class_name = target_loc.Class
+              target_uid = target_loc.uid
               target_range_m = target_loc.range_m
               target_horz_angle_deg = target_loc.azimuth_deg
               target_vert_angle_deg = target_loc.elevation_deg
@@ -1418,7 +1420,7 @@ class NepiAiTargetingApp(object):
     self.depth_map_header = depth_map_msg.header
     cv2_depth_image = self.cv2_bridge.imgmsg_to_cv2(depth_map_msg, desired_encoding="passthrough")
     #cv2_depth_image = nepi_img.rosimg_to_cv2img(depth_map_msg)
-    self.np_depth_array_m = (np.array(cv2_depth_image, dtype=np.Float32)) # replace nan values
+    self.np_depth_array_m = (np.array(cv2_depth_image, dtype=np.float32)) # replace nan values
     self.np_depth_array_m[np.isnan(self.np_depth_array_m)] = 0 # zero pixels with no value
     self.np_depth_array_m[np.isinf(self.np_depth_array_m)] = 0 # zero pixels with inf value
 
