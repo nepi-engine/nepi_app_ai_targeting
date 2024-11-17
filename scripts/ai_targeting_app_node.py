@@ -439,7 +439,6 @@ class NepiAiTargetingApp(object):
     if app_enabled == False:
       self.target_detected = False
       app_msg += "App not enabled"
-      self.image_pub.publish(self.app_ne_img)
       if self.image_sub is not None:
         nepi_msg.publishMsgWarn(self," App Disabled, Unsubscribing from Image topic : " + self.last_image_topic)
         self.image_sub.unregister()
@@ -469,6 +468,7 @@ class NepiAiTargetingApp(object):
       self.classifier_running = self.current_classifier_state == "Running"
       classes_list = ai_mgr_status_response.selected_classifier_classes
       if classes_list != self.classes_list:
+        update_status = True
         self.classes_list = classes_list
         if len(self.classes_list) > 0:
           cmap = plt.get_cmap('viridis')
@@ -483,7 +483,6 @@ class NepiAiTargetingApp(object):
           #nepi_msg.publishMsgWarn(self,self.class_color_list)
         #classes_str = str(self.classes_list)
         #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
-        update_status = True
       selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
       #nepi_msg.publishMsgWarn(self," Got selected_classes dict: " + str(selected_classes_dict))
       selected_clasess = list(selected_classes_dict.keys())
@@ -502,17 +501,16 @@ class NepiAiTargetingApp(object):
       else:
         app_msg += ", Classifier running"
         if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None") or self.reset_image_topic == True:
+          update_status = True
           self.reset_image_topic = False
           image_topic = nepi_ros.find_topic(self.current_image_topic)
           if image_topic == "":
             nepi_msg.publishMsgWarn(self," Could not find image update topic: " + self.current_image_topic)
-            self.image_pub.publish(self.classifier_nr_img)
           elif app_enabled == True and image_topic != "None":
             nepi_msg.publishMsgInfo(self," Found detect Image update topic : " + image_topic)
             if self.image_sub != None:
               nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.last_image_topic)
               self.image_sub.unregister()
-              update_status = True
               time.sleep(1)
               self.image_sub = None
 
@@ -536,6 +534,7 @@ class NepiAiTargetingApp(object):
                 time.sleep(1)
               nepi_msg.publishMsgInfo(self," Subscribing to Depth Map topic : " + depth_map_topic)
               self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
+              update_status = True
               
               # If there is a depth_map, check for pointdcloud
               pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
@@ -546,10 +545,9 @@ class NepiAiTargetingApp(object):
               else:
                 self.has_pointcloud = True
               self.pointcloud_topic = pointcloud_topic
-
+              update_status = True
           else:
             self.last_image_topic = ""
-
 
           if self.current_image_topic == "None" or self.current_image_topic == "":  # Reset last image topic
             if self.image_sub != None:
@@ -558,18 +556,10 @@ class NepiAiTargetingApp(object):
               time.sleep(1)
               self.image_sub = None
               update_status = True
-              time.sleep(1)
 
       # Check for img subscribers
       if self.image_sub is not None:
         self.img_has_subs = (self.image_sub.get_num_connections() > 0)
-
-
-      # Publish warning image if enabled and classifier not running
-      if self.classifier_running == False and app_enabled == True:
-        self.classifier_nr_img.header.stamp = nepi_ros.time_now()
-        self.image_pub.publish(self.classifier_nr_img)
-      # Save last image topic for next check
 
 
       # Update Current Targets List based on Age and Publish
@@ -1395,12 +1385,12 @@ class NepiAiTargetingApp(object):
     #Clean Up
     if found_obj_msg.count != 0:
       self.no_object_count = 0
-      self.target_locs_lock.acquire()
-      self.target_locs = []     
-      self.target_locs_lock.release()
     else:
       #print("No objects detected")
       self.no_object_count += 1
+      self.target_locs_lock.acquire()
+      self.target_locs = []     
+      self.target_locs_lock.release()
       
       self.bbs_msg = None
       self.target_box_3d_list = None
