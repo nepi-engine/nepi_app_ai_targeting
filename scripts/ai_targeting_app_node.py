@@ -1,13 +1,20 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2024 Numurus, LLC <https://www.numurus.com>.
+# Copyright (c) 2024 Numurus <https://www.numurus.com>.
 #
-# This file is part of nepi-engine
-# (see https://github.com/nepi-engine).
+# This file is part of nepi applications (nepi_apps) repo
+# (see https://https://github.com/nepi-engine/nepi_apps)
 #
-# License: 3-clause BSD, see https://opensource.org/licenses/BSD-3-Clause
+# License: nepi applications are licensed under the "Numurus Software License", 
+# which can be found at: <https://numurus.com/wp-content/uploads/Numurus-Software-License-Terms.pdf>
 #
-
+# Redistributions in source code must retain this top-level comment block.
+# Plagiarizing this software to sidestep the license obligations is illegal.
+#
+# Contact Information:
+# ====================
+# - mailto:nepi@numurus.com
+#
 
 import os
 # ROS namespace setup
@@ -379,6 +386,12 @@ class NepiAiTargetingApp(object):
     avail_classes = sorted(avail_classes)
     status_msg.available_classes_list = avail_classes
     selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+    purge_class_list = []
+    for key in selected_classes_dict.keys():
+      if key not in avail_classes:
+        purge_class_list.append(key)
+    for key in purge_class_list:
+      del selected_classes_dict[key]
     sel_classes_list = []
     depth_list = []
     for key in selected_classes_dict.keys():
@@ -480,16 +493,6 @@ class NepiAiTargetingApp(object):
               rgb.append(int(color[i]*255))
             rgb_list.append(rgb)
           self.class_color_list = rgb_list
-          #nepi_msg.publishMsgWarn(self,self.class_color_list)
-        #classes_str = str(self.classes_list)
-        #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
-      selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
-      #nepi_msg.publishMsgWarn(self," Got selected_classes dict: " + str(selected_classes_dict))
-      selected_clasess = list(selected_classes_dict.keys())
-      last_classifier = nepi_ros.get_param(self,'~last_classiier', self.init_last_classifier)
-      if last_classifier != self.current_classifier and self.current_classifier != "None":
-        selected_classes = [] # Reset classes to all on new classifier
-        update_status = True
       nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
       #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
 
@@ -1252,10 +1255,13 @@ class NepiAiTargetingApp(object):
 
 
   def imagePubCb(self,timer):
-    data_product = 'tracking_image'
+    data_product = 'targeting_image'
     has_subscribers = self.img_has_subs
+    #nepi_msg.publishMsgWarn(self,"Checking for subscribers: " + str(has_subscribers))
     saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
     snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
+    should_save = (saving_is_enabled and self.save_data_if.data_product_should_save(data_product)) or snapshot_enabled
+    #nepi_msg.publishMsgWarn(self,"Checking for save_: " + str(should_save))
     app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
     if app_enabled == False:
       #nepi_msg.publishMsgWarn(self,"Publishing Not Enabled image")
@@ -1266,7 +1272,7 @@ class NepiAiTargetingApp(object):
       if not nepi_ros.is_shutdown():
         self.classifier_nr_img.header.stamp = nepi_ros.time_now()
         self.image_pub.publish(self.classifier_nr_img)
-    elif has_subscribers or saving_is_enabled or snapshot_enabled:
+    elif has_subscribers or should_save:
       self.img_lock.acquire()
       img_msg = copy.deepcopy(self.img_msg)
       self.img_msg = None
@@ -1365,7 +1371,7 @@ class NepiAiTargetingApp(object):
                 img_out_msg.header.stamp = ros_timestamp
                 self.image_pub.publish(img_out_msg)
             # Save Data if Time
-            if saving_is_enabled or snapshot_enabled:
+            if should_save:
               nepi_save.save_img2file(self,data_product,cv2_img,ros_timestamp,save_check = False)
 
 
