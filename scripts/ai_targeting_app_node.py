@@ -732,6 +732,7 @@ class NepiAiTargetingApp(object):
   def setFrame3dTransformCb(self, msg):
       new_transform_msg = msg
       self.setFrame3dTransform(new_transform_msg)
+      self.publish_status()
 
   def setFrame3dTransform(self, transform_msg):
       #nepi_msg.publishMsgInfo(self,"AI_TARG_APP: Recieved Transform message " + str(transform_msg))

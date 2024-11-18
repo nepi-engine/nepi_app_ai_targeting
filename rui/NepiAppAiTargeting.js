@@ -321,7 +321,8 @@ class AppAiTargeting extends Component {
 
   sendClearTransformUpdateMessage(){
     const {sendClearFrame3DTransformMsg} = this.props.ros
-    const namespace = this.props.idxSensorNamespace + "/set_frame_3d_transform"
+    const appNamespace = this.getAppNamespace()
+    const namespace = appNamespace + "/set_frame_3d_transform"
     const transformList = [0,0,0,0,0,0,0]
     sendClearFrame3DTransformMsg(namespace,transformList)
     this.setState({
