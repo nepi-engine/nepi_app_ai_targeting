@@ -58,7 +58,6 @@ class AppAiTargeting extends Component {
       app_msg: "Connecting",
 
       image_name: "targeting_image",
-      show_detector_box: false,
 
       classifier_running: false,
 
@@ -412,7 +411,7 @@ class AppAiTargeting extends Component {
                   <div hidden={(connected === true)}>
 
                 <pre style={{ height: "40px", overflowY: "auto" ,fontWeight: 'bold' , color: Styles.vars.colors.Green, textAlign: "left" }}>
-                    {"Loading"}
+                    {"Loading or Refresh Page"}
                   </pre>
 
                 </div>
@@ -732,7 +731,6 @@ class AppAiTargeting extends Component {
   render() {
     const connected = this.state.connected === true
     const appNamespace = (connected) ? this.getAppNamespace() : null
-    const show_detector_box = this.state.show_detector_box
     const imageNamespace = appNamespace + '/' + this.state.image_name
 
     return (
@@ -740,7 +738,14 @@ class AppAiTargeting extends Component {
       <Columns>
       <Column equalWidth={true}>
 
-       
+      <div hidden={!connected}>
+
+    <NepiIFSaveData
+      saveNamespace={appNamespace}
+      title={"Nepi_IF_SaveData"}
+    />
+
+    </div>
 
       <CameraViewer
         imageTopic={imageNamespace}
@@ -753,44 +758,13 @@ class AppAiTargeting extends Component {
       <Column>
 
 
-      <Columns>
-      <Column>
-
-      <Label title="Show AI Detector Settings">
-              <Toggle
-              checked={(this.state.show_detector_box === true)}
-              onClick={() => onChangeSwitchStateValue.bind(this)("show_detector_box",this.state.show_detector_box)}>
-              </Toggle>
-        </Label>
-
-      </Column>
-      <Column>
-
-    </Column>
-    </Columns>
-
-
-
-      <div hidden={!show_detector_box}>
-
       <AiDetectorMgr
               title={"Nepi_Mgr_AI_Detector"}
           />
 
-      </div>
-
 
       {this.renderApp()}
 
-
-      <div hidden={!connected}>
-
-        <NepiIFSaveData
-          saveNamespace={appNamespace}
-          title={"Nepi_IF_SaveData"}
-        />
-
-      </div>
 
       </Column>
       </Columns>
