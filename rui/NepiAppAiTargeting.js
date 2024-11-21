@@ -37,7 +37,7 @@ import CameraViewer from "./CameraViewer"
 import NepiIFSaveData from "./Nepi_IF_SaveData"
 
 
-import {round, convertStrToStrList, createMenuListFromStrList, onDropdownSelectedSendStr, onUpdateSetStateValue, onEnterSendFloatValue, onEnterSendIntValue, onChangeSwitchStateValue, onEnterSetStateFloatValue} from "./Utilities"
+import {round, createMenuListFromStrList, onDropdownSelectedSendStr, onUpdateSetStateValue, onEnterSendFloatValue, onEnterSendIntValue, onEnterSetStateFloatValue} from "./Utilities"
 
 @inject("ros")
 @observer
@@ -393,7 +393,6 @@ class AppAiTargeting extends Component {
     const classOptions = this.getClassOptions()
     const selectedClasses = this.state.selected_classes_list
     const NoneOption = <Option>None</Option>
-    const classifier_running = this.state.classifier_running
     const connected = this.state.connected === true
     const appNamespace = this.getAppNamespace()
     const classes_sel = selectedClasses[0] !== "" && selectedClasses[0] !== "None"
