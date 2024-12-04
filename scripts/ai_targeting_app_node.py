@@ -1340,16 +1340,26 @@ class NepiAiTargetingApp(object):
                 # Overlay text data on OpenCV image
                 font                   = cv2.FONT_HERSHEY_DUPLEX
                 fontScale, thickness  = nepi_img.optimal_font_dims(cv2_img,font_scale = 1.5e-3, thickness_scale = 1.5e-3)
-                fontColor = (0, 255, 0)
+                fontColor = (255, 255, 255)
                 lineType = 1
-                text_size = cv2.getTextSize("Text", 
+
+                ## Overlay Label
+                text2overlay=target_uid
+                text_size = cv2.getTextSize(text2overlay, 
                     font, 
                     fontScale,
                     thickness)
-                line_height = text_size[1] * 3
-                # Overlay Label
-                text2overlay=target_uid
+                #nepi_msg.publishMsgWarn(self,"Text Size: " + str(text_size))
+                line_height = text_size[0][1]
+                line_width = text_size[0][0]
                 bottomLeftCornerOfText = (xmin + line_thickness,ymin + line_thickness * 2 + line_height)
+                # Create Text Background Box
+                padding = int(line_height*0.4)
+                start_point = (bottomLeftCornerOfText[0]-padding, bottomLeftCornerOfText[1]-line_height-padding)
+                end_point = (bottomLeftCornerOfText[0]+line_width+padding, bottomLeftCornerOfText[1]+padding)
+                box_color = [0,0,0]
+                cv2.rectangle(cv2_img, start_point, end_point, box_color , -1)
+
                 cv2.putText(cv2_img,text2overlay, 
                     bottomLeftCornerOfText, 
                     font, 
@@ -1375,7 +1385,19 @@ class NepiAiTargetingApp(object):
                   tv = ("%.f" % target_vert_angle_deg)
 
                 text2overlay= tr + "m," + th + "d," + tv + "d"
-                bottomLeftCornerOfText = (xmin + line_thickness,ymin + line_thickness * 2 + line_height * 2)
+                text_size = cv2.getTextSize(text2overlay, 
+                    font, 
+                    fontScale,
+                    thickness)
+                line_height = text_size[0][1]
+                line_width = text_size[0][0]
+                bottomLeftCornerOfText = (xmin + line_thickness,ymin + line_thickness * 2 + line_height * 3)
+                # Create Text Background Box
+                padding = int(line_height*0.4)
+                start_point = (bottomLeftCornerOfText[0]-padding, bottomLeftCornerOfText[1]-line_height-padding)
+                end_point = (bottomLeftCornerOfText[0]+line_width+padding, bottomLeftCornerOfText[1]+padding)
+                box_color = [0,0,0]
+                cv2.rectangle(cv2_img, start_point, end_point, box_color , -1)
                 cv2.putText(cv2_img,text2overlay, 
                     bottomLeftCornerOfText, 
                     font, 
