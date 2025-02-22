@@ -32,7 +32,6 @@ import Toggle from "react-toggle"
 import BooleanIndicator from "./BooleanIndicator"
 
 
-import AiDetectorMgr from "./NepiMgrAiDetector"
 import CameraViewer from "./CameraViewer"
 import NepiIFSaveData from "./Nepi_IF_SaveData"
 
@@ -757,10 +756,6 @@ class AppAiTargeting extends Component {
       </Column>
       <Column>
 
-
-      <AiDetectorMgr
-              title={"Nepi_Mgr_AI_Detector"}
-          />
 
 
       {this.renderApp()}
