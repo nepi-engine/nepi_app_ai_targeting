@@ -96,7 +96,7 @@ class NepiAiTargetingApp(object):
     'velocity_pxps': [0,0],
     'enter_m': [0,0,0],
     'velocity_mps': [0,0,0],
-    'last_detection_timestamp': nepi_ros.duration(0)                              
+    'last_detection_timestamp': nepi_ros.ros_ros_ros_duration(0)                              
     }
 
 
@@ -207,7 +207,7 @@ class NepiAiTargetingApp(object):
     message = "APP NOT ENABLED"
     cv2_img = nepi_img.create_message_image(message)
     self.app_ne_img = nepi_img.cv2img_to_rosimg(cv2_img)
-    self.app_ne_img.header.stamp = nepi_ros.time_now()
+    self.app_ne_img.header.stamp = nepi_ros.ros_ros_time_now()
     self.image_pub.publish(self.app_ne_img)
 
     message = "WAITING FOR AI DETECTOR TO START"
@@ -267,8 +267,8 @@ class NepiAiTargetingApp(object):
     time.sleep(1)
 
     # Set up timer callbacks
-    nepi_ros.timer(nepi_ros.duration(self.UDATE_PROCESS_DELAY), self.updaterCb)
-    nepi_ros.timer(nepi_ros.duration(self.IMG_PUB_PROCESS_DELAY), self.imagePubCb)
+    nepi_ros.timer(nepi_ros.ros_ros_ros_duration(self.UDATE_PROCESS_DELAY), self.updaterCb)
+    nepi_ros.timer(nepi_ros.ros_ros_ros_duration(self.IMG_PUB_PROCESS_DELAY), self.imagePubCb)
 
 
     ## Initiation Complete
@@ -581,15 +581,15 @@ class NepiAiTargetingApp(object):
       if app_enabled == False:
         #nepi_msg.publishMsgWarn(self,"Publishing Not Enabled image")
         if not nepi_ros.is_shutdown():
-          self.app_ne_img.header.stamp = nepi_ros.time_now()
+          self.app_ne_img.header.stamp = nepi_ros.ros_ros_time_now()
           self.image_pub.publish(self.app_ne_img)
       elif self.classifier_running == False:
         if not nepi_ros.is_shutdown():
-          self.classifier_nr_img.header.stamp = nepi_ros.time_now()
+          self.classifier_nr_img.header.stamp = nepi_ros.ros_ros_time_now()
           self.image_pub.publish(self.classifier_nr_img)
       elif self.classes_selected == False:
         if not nepi_ros.is_shutdown():
-          self.no_class_img.header.stamp = nepi_ros.time_now()
+          self.no_class_img.header.stamp = nepi_ros.ros_ros_time_now()
           self.image_pub.publish(self.no_class_img)
 
       # Check for img subscribers
@@ -598,7 +598,7 @@ class NepiAiTargetingApp(object):
 
 
       # Update Current Targets List based on Age and Publish
-      current_timestamp = nepi_ros.get_rostime()
+      current_timestamp = nepi_ros.ros_ros_time_now()
       active_targets_dict = copy.deepcopy(self.active_targets_dict)
       lost_targets_dict = copy.deepcopy(self.lost_targets_dict)
       purge_list = []
