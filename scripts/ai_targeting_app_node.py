@@ -53,8 +53,8 @@ from nepi_ros_interfaces.srv import ImageClassifierStatusQuery, ImageClassifierS
 from nepi_ros_interfaces.msg import Frame3DTransform
 from nepi_app_ai_targeting.msg import AiTargetingStatus, AiTargetingTargets
 
-from nepi_sdk.save_data_if import SaveDataIF
-from nepi_sdk.save_cfg_if import SaveCfgIF
+from nepi_api.sys_if_save_data import SaveDataIF
+from nepi_api.sys_if_save_cfg import SaveCfgIF
 
 # Do this at the end
 #from scipy.signal import find_peaks
@@ -173,6 +173,7 @@ class NepiAiTargetingApp(object):
   img_has_subs = False
 
   last_app_enabled = False
+  last_trigger_time = nepi_ros.ros_time_now()
   #######################
   ### Node Initialization
   DEFAULT_NODE_NAME = "app_ai_targeting" # Can be overwitten by luanch command
@@ -184,12 +185,14 @@ class NepiAiTargetingApp(object):
     nepi_msg.createMsgPublishers(self)
     nepi_msg.publishMsgInfo(self,"Starting Initialization Processes")
     ##############################
-    self.ai_mgr_namespace = os.path.join(self.base_namespace, self.AI_MANAGER_NODE_NAME)
-    
-    self.initParamServerValues(do_updates = False)
-    self.resetParamServer(do_updates = False)
-   
+    # Init Param Server
+    self.initCb(do_updates = False)
 
+
+    ##############################
+    ### Setup Node
+    self.ai_mgr_namespace = os.path.join(self.base_namespace, self.AI_MANAGER_NODE_NAME)
+   
     # Setup Node Publishers
     self.status_pub = rospy.Publisher("~status", AiTargetingStatus, queue_size=1, latch=True)
     self.targets_pub = rospy.Publisher("~targets", AiTargetingTargets, queue_size=1, latch=True)
@@ -202,38 +205,6 @@ class NepiAiTargetingApp(object):
     self.target_localizations_pub = rospy.Publisher("~target_localizations", TargetLocalizations, queue_size=1)
     self.image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1, latch = True)
     time.sleep(1)
-
-    # Message Image to publish when detector not running
-    message = "APP NOT ENABLED"
-    cv2_img = nepi_img.create_message_image(message)
-    self.app_ne_img = nepi_img.cv2img_to_rosimg(cv2_img)
-    self.app_ne_img.header.stamp = nepi_ros.ros_time_now()
-    self.image_pub.publish(self.app_ne_img)
-
-    message = "WAITING FOR AI DETECTOR TO START"
-    cv2_img = nepi_img.create_message_image(message)
-    self.classifier_nr_img = nepi_img.cv2img_to_rosimg(cv2_img)
-
-    message = "WAITING FOR TARGET CLASSES SELECTION"
-    cv2_img = nepi_img.create_message_image(message)
-    self.no_class_img = nepi_img.cv2img_to_rosimg(cv2_img)
-
-
-    # Set up save data and save config services ########################################################
-    factory_data_rates= {}
-    for d in self.data_products:
-        factory_data_rates[d] = [0.0, 0.0, 100.0] # Default to 0Hz save rate, set last save = 0.0, max rate = 100.0Hz
-    if 'targeting_image' in self.data_products:
-        factory_data_rates['targeting_image'] = [1.0, 0.0, 100.0] 
-    self.save_data_if = SaveDataIF(data_product_names = self.data_products, factory_data_rate_dict = factory_data_rates)
-    # Temp Fix until added as NEPI ROS Node
-    self.save_cfg_if = SaveCfgIF(updateParamsCallback=self.initParamServerValues, 
-                                 paramsModifiedCallback=self.updateFromParamServer)
-
-
-    ## App Setup ########################################################
-    app_reset_app_sub = rospy.Subscriber('~reset_app', Empty, self.resetAppCb, queue_size = 10)
-    self.initParamServerValues(do_updates=False)
 
     # App Specific Subscribers
     rospy.Subscriber('~publish_status', Empty, self.pubStatusCb, queue_size = 10)
@@ -256,6 +227,38 @@ class NepiAiTargetingApp(object):
     rospy.Subscriber('~set_frame_3d_transform', Frame3DTransform, self.setFrame3dTransformCb, queue_size=1)
     rospy.Subscriber('~clear_frame_3d_transform', Empty, self.clearFrame3dTransformCb, queue_size=1)
 
+    self.save_cfg_if = SaveCfgIF(initCb=self.initCb, resetCb=self.resetCb,  factoryResetCb=self.factoryResetCb)
+    ready = self.save_cfg_if.wait_for_ready()
+
+    ##############################
+    self.initCb(do_updates = True)
+
+    # Set up save data and save config services 
+    factory_data_rates= {}
+    for d in self.data_products:
+        factory_data_rates[d] = [0.0, 0.0, 100.0] # Default to 0Hz save rate, set last save = 0.0, max rate = 100.0Hz
+    if 'targeting_image' in self.data_products:
+        factory_data_rates['targeting_image'] = [1.0, 0.0, 100.0] 
+    self.save_data_if = SaveDataIF(data_product_names = self.data_products, factory_data_rate_dict = factory_data_rates)
+
+
+    ##############################
+    # Message Image to publish when detector not running
+    message = "APP NOT ENABLED"
+    cv2_img = nepi_img.create_message_image(message)
+    self.app_ne_img = nepi_img.cv2img_to_rosimg(cv2_img)
+    self.app_ne_img.header.stamp = nepi_ros.ros_time_now()
+    self.image_pub.publish(self.app_ne_img)
+
+    message = "WAITING FOR AI DETECTOR TO START"
+    cv2_img = nepi_img.create_message_image(message)
+    self.classifier_nr_img = nepi_img.cv2img_to_rosimg(cv2_img)
+
+    message = "WAITING FOR TARGET CLASSES SELECTION"
+    cv2_img = nepi_img.create_message_image(message)
+    self.no_class_img = nepi_img.cv2img_to_rosimg(cv2_img)
+
+    ##############################
     # Get AI Manager Service Call
     ##AI_MGR_STATUS_SERVICE_NAME = self.ai_mgr_namespace  + "/img_classifier_status_query"
     #self.AI_MGR_STATUS_SERVICE_NAME = rospy.ServiceProxy(AI_MGR_STATUS_SERVICE_NAME, ImageClassifierStatusQuery)
@@ -285,10 +288,9 @@ class NepiAiTargetingApp(object):
   #######################
   ### App Config Functions
 
-  def resetAppCb(self,msg):
-    self.resetApp()
 
-  def resetApp(self):
+
+  def factoryResetCb(self):
 
     nepi_ros.set_param(self,"~app_enabled",False)
 
@@ -311,19 +313,7 @@ class NepiAiTargetingApp(object):
     self.lost_targets_dict = dict()
     self.publish_status()
 
-  def saveConfigCb(self, msg):  # Just update Class init values. Saving done by Config IF system
-    pass # Left empty for sim, Should update from param server
-
-  def setCurrentAsDefault(self):
-    self.initParamServerValues(do_updates = False)
-
-  def updateFromParamServer(self):
-    #nepi_msg.publishMsgWarn(self,"Debugging: param_dict = " + str(param_dict))
-    #Run any functions that need updating on value change
-    # Don't need to run any additional functions
-    pass
-
-  def initParamServerValues(self,do_updates = True):
+  def initCb(self,do_updates = False):
       nepi_msg.publishMsgInfo(self," Setting init values to param values")
 
       self.init_app_enabled = nepi_ros.get_param(self,"~app_enabled",False)
@@ -341,9 +331,10 @@ class NepiAiTargetingApp(object):
       self.init_target_min_dist_m = nepi_ros.get_param(self,'~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
       self.init_target_age_filter = nepi_ros.get_param(self,'~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
       self.init_frame_3d_transform = nepi_ros.get_param(self,'~frame_3d_transform', self.ZERO_TRANSFORM)
-      self.resetParamServer(do_updates)
+      if do_updates == True:
+        self.resetCb(do_updates)
 
-  def resetParamServer(self,do_updates = True):
+  def resetCb(self):
 
       nepi_ros.set_param(self,'~app_enabled',self.init_app_enabled)
 
@@ -360,9 +351,7 @@ class NepiAiTargetingApp(object):
       nepi_ros.get_param(self,'~target_min_dist_m', self.init_target_min_dist_m)
       nepi_ros.set_param(self,'~target_age_filter', self.init_target_age_filter)
       nepi_ros.set_param(self,'~frame_3d_transform', self.init_frame_3d_transform)
-      if do_updates:
-          self.updateFromParamServer()
-          self.publish_status()
+      self.publish_status()
 
 
   ###################
