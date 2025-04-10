@@ -36,6 +36,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from nepi_sdk import nepi_ros
+from nepi_sdk import nepi_utils
 from nepi_sdk import nepi_save
 from nepi_sdk import nepi_msg
 from nepi_sdk import nepi_pc 
@@ -53,6 +54,10 @@ from nepi_ros_interfaces.srv import ImageClassifierStatusQuery, ImageClassifierS
 from nepi_ros_interfaces.msg import Frame3DTransform
 from nepi_app_ai_targeting.msg import AiTargetingStatus, AiTargetingTargets
 
+
+from nepi_api.node_if import NodeClassIF
+from nepi_api.sys_if_msg import MsgIF
+from nepi_api.connect_node_if import ConnectNodeClassIF
 from nepi_api.sys_if_save_data import SaveDataIF
 from nepi_api.sys_if_save_cfg import SaveCfgIF
 
@@ -180,11 +185,17 @@ class NepiAiTargetingApp(object):
   def __init__(self):
     #### APP NODE INIT SETUP ####
     nepi_ros.init_node(name= self.DEFAULT_NODE_NAME)
-    self.node_name = nepi_ros.get_node_name()
+    self.class_name = type(self).__name__
     self.base_namespace = nepi_ros.get_base_namespace()
-    nepi_msg.createMsgPublishers(self)
-    nepi_msg.publishMsgInfo(self,"Starting Initialization Processes")
-    ##############################
+    self.node_name = nepi_ros.get_node_name()
+    self.node_namespace = nepi_ros.get_node_namespace()
+
+    ##############################  
+    # Create Msg Class
+    self.msg_if = MsgIF(log_name = self.class_name)
+    self.msg_if.pub_info("Starting IF Initialization Processes")
+
+    ##############################     
     # Init Param Server
     self.initCb(do_updates = False)
 
@@ -275,7 +286,7 @@ class NepiAiTargetingApp(object):
 
 
     ## Initiation Complete
-    nepi_msg.publishMsgInfo(self," Initialization Complete")
+    self.msg_if.pub_info(" Initialization Complete")
     self.publish_status()
     self.publish_targets()
 
@@ -314,7 +325,7 @@ class NepiAiTargetingApp(object):
     self.publish_status()
 
   def initCb(self,do_updates = False):
-      nepi_msg.publishMsgInfo(self," Setting init values to param values")
+      self.msg_if.pub_info(" Setting init values to param values")
 
       self.init_app_enabled = nepi_ros.get_param(self,"~app_enabled",False)
 
@@ -374,7 +385,7 @@ class NepiAiTargetingApp(object):
     status_msg.classifier_running = self.classifier_running
 
     avail_classes = self.classes_list
-    #nepi_msg.publishMsgWarn(self," available classes: " + str(avail_classes))
+    #self.msg_if.pub_warn(" available classes: " + str(avail_classes))
     if len(avail_classes) == 0:
       avail_classes = ["None"]
     avail_classes = sorted(avail_classes)
@@ -433,7 +444,7 @@ class NepiAiTargetingApp(object):
     avail_targets_list.insert(0,"None")
     targets_ms.available_targets_list = (avail_targets_list)
     targets_ms.selected_target = self.selected_target
-    #nepi_msg.publishMsgWarn(self," Targets Msg: " + str(targets_ms))
+    #self.msg_if.pub_warn(" Targets Msg: " + str(targets_ms))
     self.targets_pub.publish(targets_ms)     
     
  
@@ -447,7 +458,7 @@ class NepiAiTargetingApp(object):
       self.target_detected = False
       app_msg += "App not enabled"
       if self.image_sub is not None:
-        nepi_msg.publishMsgWarn(self," App Disabled, Unsubscribing from Image topic : " + self.last_image_topic)
+        self.msg_if.pub_warn(" App Disabled, Unsubscribing from Image topic : " + self.last_image_topic)
         self.image_sub.unregister()
         time.sleep(1)
         self.image_sub = None
@@ -459,16 +470,16 @@ class NepiAiTargetingApp(object):
     ai_mgr_status_response = None
     try:
       ai_mgr_status_response = self.get_ai_mgr_status_service()
-      #nepi_msg.publishMsgInfo(self," Got classifier status  " + str(ai_mgr_status_response))
+      #self.msg_if.pub_info(" Got classifier status  " + str(ai_mgr_status_response))
     except Exception as e:
-      nepi_msg.publishMsgWarn(self,"Failed to call AI MGR STATUS service" + str(e))
+      self.msg_if.pub_warn("Failed to call AI MGR STATUS service" + str(e))
       self.classifier_running = False
       nepi_ros.set_param(self,'~last_classiier', "")
       app_msg += ", AI Detector not connected"
     if ai_mgr_status_response != None:
       app_msg += ", AI Detector connected"
       #status_str = str(ai_mgr_status_response)
-      #nepi_msg.publishMsgWarn(self," got ai manager status: " + status_str)
+      #self.msg_if.pub_warn(" got ai manager status: " + status_str)
       self.current_image_topic = ai_mgr_status_response.selected_img_topic
       self.current_classifier = ai_mgr_status_response.selected_classifier
       self.current_classifier_state = ai_mgr_status_response.classifier_state
@@ -489,7 +500,7 @@ class NepiAiTargetingApp(object):
           self.class_color_list = rgb_list
       self.classes_list = classes_list
       nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
-      #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
+      #self.msg_if.pub_warn(" Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
 
       # Update Image Topic Subscriber
       if self.classifier_running == False:
@@ -503,16 +514,16 @@ class NepiAiTargetingApp(object):
           self.reset_image_topic = False
           image_topic = nepi_ros.find_topic(self.current_image_topic)
           if image_topic == "":
-            nepi_msg.publishMsgWarn(self," Could not find image update topic: " + self.current_image_topic)
+            self.msg_if.pub_warn(" Could not find image update topic: " + self.current_image_topic)
           elif app_enabled == True and image_topic != "None":
-            nepi_msg.publishMsgInfo(self," Found detect Image update topic : " + image_topic)
+            self.msg_if.pub_info(" Found detect Image update topic : " + image_topic)
             if self.image_sub != None:
-              nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.last_image_topic)
+              self.msg_if.pub_warn(" Unsubscribing to Image topic : " + self.last_image_topic)
               self.image_sub.unregister()
               time.sleep(1)
               self.image_sub = None
 
-            nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
+            self.msg_if.pub_info(" Subscribing to Image topic : " + image_topic)
             self.image_sub = rospy.Subscriber(image_topic, Image, self.imageCb, queue_size = 1)
 
             # Look for Depth Map
@@ -524,13 +535,13 @@ class NepiAiTargetingApp(object):
             else:
               self.has_depth_map = True
             self.depth_map_topic = depth_map_topic
-            #nepi_msg.publishMsgWarn(self,self.depth_map_topic)
+            #self.msg_if.pub_warn(self.depth_map_topic)
             if depth_map_topic != "None":
               if self.depth_map_sub != None:
                 self.depth_map_sub.unregister()
                 self.depth_map_sub = None
                 time.sleep(1)
-              nepi_msg.publishMsgInfo(self," Subscribing to Depth Map topic : " + depth_map_topic)
+              self.msg_if.pub_info(" Subscribing to Depth Map topic : " + depth_map_topic)
               self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
               update_status = True
               
@@ -549,7 +560,7 @@ class NepiAiTargetingApp(object):
 
           if self.current_image_topic == "None" or self.current_image_topic == "":  # Reset last image topic
             if self.image_sub != None:
-              nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.current_image_topic)
+              self.msg_if.pub_warn(" Unsubscribing to Image topic : " + self.current_image_topic)
               self.image_sub.unregister()
               time.sleep(1)
               self.image_sub = None
@@ -568,7 +579,7 @@ class NepiAiTargetingApp(object):
       self.classes_selected = classes_sel
 
       if app_enabled == False:
-        #nepi_msg.publishMsgWarn(self,"Publishing Not Enabled image")
+        #self.msg_if.pub_warn("Publishing Not Enabled image")
         if not nepi_ros.is_shutdown():
           self.app_ne_img.header.stamp = nepi_ros.ros_time_now()
           self.image_pub.publish(self.app_ne_img)
@@ -592,20 +603,20 @@ class NepiAiTargetingApp(object):
       lost_targets_dict = copy.deepcopy(self.lost_targets_dict)
       purge_list = []
       age_filter_sec = nepi_ros.get_param(self,'~target_age_filter', self.init_target_age_filter)
-      #nepi_msg.publishMsgWarn(self,active_targets_dict)
+      #self.msg_if.pub_warn(active_targets_dict)
       for target in active_targets_dict.keys():
         last_timestamp = active_targets_dict[target]['last_detection_timestamp']
-        #nepi_msg.publishMsgWarn(self,target)
-        #nepi_msg.publishMsgWarn(self,ros_timestamp.to_sec())
-        #nepi_msg.publishMsgWarn(self,last_timestamp.to_sec())
+        #self.msg_if.pub_warn(target)
+        #self.msg_if.pub_warn(ros_timestamp.to_sec())
+        #self.msg_if.pub_warn(last_timestamp.to_sec())
         age =(current_timestamp.to_sec() - last_timestamp.to_sec())
-        #nepi_msg.publishMsgWarn(self,"Target " + target + " age: " + str(age))
+        #self.msg_if.pub_warn("Target " + target + " age: " + str(age))
         if age > age_filter_sec:
           purge_list.append(target)
-      #nepi_msg.publishMsgWarn(self,"Target Purge List: " + str(purge_list))
+      #self.msg_if.pub_warn("Target Purge List: " + str(purge_list))
       for target in purge_list: 
           lost_targets_dict[target] = active_targets_dict[target]
-          nepi_msg.publishMsgInfo(self," Purging target: " + target + " from active target list")
+          self.msg_if.pub_info(" Purging target: " + target + " from active target list")
           del active_targets_dict[target]
       self.active_targets_dict = active_targets_dict
       self.lost_targets_dict = lost_targets_dict
@@ -617,7 +628,7 @@ class NepiAiTargetingApp(object):
       self.targeting_running = False
       self.current_targets_dict = dict()
       if self.image_sub != None:
-        nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.current_image_topic)
+        self.msg_if.pub_warn(" Unsubscribing to Image topic : " + self.current_image_topic)
         self.image_sub.unregister()
         self.image_sub = None
         update_status = True
@@ -646,13 +657,13 @@ class NepiAiTargetingApp(object):
 
 
   def appEnableCb(self,msg):
-    #nepi_msg.publishMsgInfo(self,msg)
+    #self.msg_if.pub_info(msg)
     val = msg.data
     nepi_ros.set_param(self,'~app_enabled',val)
     self.publish_status()
 
   def addAllClassesCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
+    ##self.msg_if.pub_info(msg)
     classes = self.classes_list
     depth = nepi_ros.get_param(self,'~default_target_depth',self.init_default_target_depth)
     selected_dict = dict()
@@ -662,12 +673,12 @@ class NepiAiTargetingApp(object):
     self.publish_status()
 
   def removeAllClassesCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
+    ##self.msg_if.pub_info(msg)
     nepi_ros.set_param(self,'~selected_classes_dict', dict())
     self.publish_status()
 
   def addClassCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
+    ##self.msg_if.pub_info(msg)
     class_name = msg.data
     class_depth_m = nepi_ros.get_param(self,'~default_target_depth',  self.init_default_target_depth)
     if class_name in self.classes_list:
@@ -677,7 +688,7 @@ class NepiAiTargetingApp(object):
     self.publish_status()
 
   def removeClassCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
+    ##self.msg_if.pub_info(msg)
     class_name = msg.data
     selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
     if class_name in selected_classes_dict.keys():
@@ -687,14 +698,14 @@ class NepiAiTargetingApp(object):
 
 
   def selectTargetCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
+    ##self.msg_if.pub_info(msg)
     target_name = msg.data
     if target_name == 'None' or target_name in self.active_targets_dict.keys():
       self.selected_target = target_name
     self.publish_targets()
 
   def setVertFovCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
+    ##self.msg_if.pub_info(msg)
     fov = msg.data
     if fov > 0:
       nepi_ros.set_param(self,'~image_fov_vert',  fov)
@@ -702,49 +713,49 @@ class NepiAiTargetingApp(object):
 
 
   def setHorzFovCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
+    ##self.msg_if.pub_info(msg)
     fov = msg.data
     if fov > 0:
       nepi_ros.set_param(self,'~image_fov_horz',  fov)
     self.publish_status()
     
   def setTargetBoxPercentCb(self,msg):
-    #nepi_msg.publishMsgInfo(self,msg)
+    #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 10 and val <= 200:
       nepi_ros.set_param(self,'~target_box_percent',val)
     self.publish_status()   
       
   def setDefaultTargetDepthCb(self,msg):
-    #nepi_msg.publishMsgInfo(self,msg)
+    #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 0:
       nepi_ros.set_param(self,'~default_target_depth',val)
     self.publish_status()   
 
   def setTargetMinPointsCb(self,msg):
-    #nepi_msg.publishMsgInfo(self,msg)
+    #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 0:
       nepi_ros.set_param(self,'~target_min_points',val)
     self.publish_status() 
 
   def setTargetMinPxRatioCb(self,msg):
-    #nepi_msg.publishMsgInfo(self,msg)
+    #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 0 and val <= 1:
       nepi_ros.set_param(self,'~target_min_px_ratio',val)
     self.publish_status() 
 
   def setTargetMinDistMCb(self,msg):
-    #nepi_msg.publishMsgInfo(self,msg)
+    #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 0:
       nepi_ros.set_param(self,'~target_min_dist_m',val)
     self.publish_status() 
 
   def setAgeFilterCb(self,msg):
-    #nepi_msg.publishMsgInfo(self,msg)
+    #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 0:
       nepi_ros.set_param(self,'~target_age_filter',val)
@@ -756,7 +767,7 @@ class NepiAiTargetingApp(object):
       self.publish_status()
 
   def setFrame3dTransform(self, transform_msg):
-      #nepi_msg.publishMsgInfo(self,"AI_TARG_APP: Recieved Transform message " + str(transform_msg))
+      #self.msg_if.pub_info("AI_TARG_APP: Recieved Transform message " + str(transform_msg))
       x = transform_msg.translate_vector.x
       y = transform_msg.translate_vector.y
       z = transform_msg.translate_vector.z
@@ -766,7 +777,7 @@ class NepiAiTargetingApp(object):
       heading = transform_msg.heading_offset
       transform = [x,y,z,roll,pitch,yaw,heading]
       nepi_ros.set_param(self,'~frame_3d_transform',  transform)
-      #nepi_msg.publishMsgInfo(self,"AI_TARG_APP: Updated Transform: " + str(transform))
+      #self.msg_if.pub_info("AI_TARG_APP: Updated Transform: " + str(transform))
 
   def clearFrame3dTransformCb(self, msg):
       new_transform_msg = msg
@@ -809,7 +820,7 @@ class NepiAiTargetingApp(object):
       tls = []
       bbs3d = []
 
-      #nepi_msg.publishMsgWarn(self,"Got image hxw: " + str([self.img_height,self.img_width]))
+      #self.msg_if.pub_warn("Got image hxw: " + str([self.img_height,self.img_width]))
       if self.img_height != 0 and self.img_width != 0:
           # Iterate over all of the objects and calculate range and bearing data
           
@@ -864,7 +875,7 @@ class NepiAiTargetingApp(object):
                       ymax_adj=box.ymax + delta_y
                       xmin_adj=box.xmin - delta_x
                       xmax_adj=box.xmax + delta_x
-                      #nepi_msg.publishMsgWarn(self,"Got adjusted box sizes yx: " + str([ymin_adj,ymax_adj,xmin_adj,xmax_adj]))
+                      #self.msg_if.pub_warn("Got adjusted box sizes yx: " + str([ymin_adj,ymax_adj,xmin_adj,xmax_adj]))
                       # Calculate target range
                       target_range_m=float(-999)  # NEPI standard unset value
                       target_depth = selected_classes_dict[box.Class]['depth']
@@ -879,8 +890,8 @@ class NepiAiTargetingApp(object):
                           depth_array = depth_array[~np.isnan(depth_array)] # remove nan entries
                           depth_array = depth_array[depth_array>0] # remove zero entries
                           depth_val=np.mean(depth_array) # Initialize fallback value.  maybe updated
-                          #nepi_msg.publishMsgWarn(self,"got depth data")
-                          #nepi_msg.publishMsgWarn(self,depth_val)
+                          #self.msg_if.pub_warn("got depth data")
+                          #self.msg_if.pub_warn(depth_val)
                           # Try histogram calculation
                           try:
                             min_range = np.min(depth_array)
@@ -893,8 +904,8 @@ class NepiAiTargetingApp(object):
                               bins_per_target = 10
                               bin_step = target_depth / bins_per_target
                               num_bins = 1
-                              #nepi_msg.publishMsgWarn(self,'delta_range: ' + str(delta_range))
-                              #nepi_msg.publishMsgWarn(self,'bin_step: ' + str(bin_step))
+                              #self.msg_if.pub_warn('delta_range: ' + str(delta_range))
+                              #self.msg_if.pub_warn('bin_step: ' + str(bin_step))
                               if bin_step > 0.001 and math.isinf(delta_range) == False :
                                 num_bins = int(delta_range / bin_step)
                               # Get histogram
@@ -912,7 +923,7 @@ class NepiAiTargetingApp(object):
                                       max_hist_ind = ih
                                   elif val < max_hist_val:
                                       break 
-                              #nepi_msg.publishMsgWarn(self,max_hist_ind)
+                              #self.msg_if.pub_warn(max_hist_ind)
                               hist_len = len(hist)
                               bins_len = len(bins)
                               # Hanning window on targets
@@ -935,9 +946,9 @@ class NepiAiTargetingApp(object):
                                   han_win[back_pad:] = 0
                                   han_win_len = len(han_win)
                                   
-                                  #nepi_msg.publishMsgWarn(self,[min_range,max_range])
-                                  #nepi_msg.publishMsgWarn(self,bins)
-                                  #nepi_msg.publishMsgWarn(self,han_win)
+                                  #self.msg_if.pub_warn([min_range,max_range])
+                                  #self.msg_if.pub_warn(bins)
+                                  #self.msg_if.pub_warn(han_win)
                                   if np.sum(han_win) > .1:
                                       depth_val=np.average(bins,weights = han_win)
                                   
@@ -948,13 +959,13 @@ class NepiAiTargetingApp(object):
                           depth_array=depth_array[depth_array > min_filter]
                           depth_array=depth_array[depth_array < max_filter]
                           depth_len=len(depth_array)
-                          #nepi_msg.publishMsgWarn(self,"")
-                          #nepi_msg.publishMsgWarn(self,depth_len)
+                          #self.msg_if.pub_warn("")
+                          #self.msg_if.pub_warn(depth_len)
                           if depth_len > target_min_points:
                               target_range_m=depth_val
                           else:
                               target_range_m= -999
-                          #nepi_msg.publishMsgWarn(self,target_range_m)
+                          #self.msg_if.pub_warn(target_range_m)
                           
                       # Calculate target bearings
                       object_loc_y_pix = float(box.ymin + ((box.ymax - box.ymin))  / 2) 
@@ -964,11 +975,11 @@ class NepiAiTargetingApp(object):
                       target_vert_angle_deg = (object_loc_y_ratio_from_center * float(image_fov_vert/2))
                       target_horz_angle_deg = - (object_loc_x_ratio_from_center * float(image_fov_horz/2))
                       ### Print the range and bearings for each detected object
-                      #nepi_msg.publishMsgWarn(self,"")
-                      #nepi_msg.publishMsgWarn(self,target_label)
-                      #nepi_msg.publishMsgWarn(self,str(depth_box_adj.shape) + " detection box size")
-                      #nepi_msg.publishMsgWarn(self,"%.2f" % target_range_m + "m : " + "%.2f" % target_horz_angle_deg + "d : " + "%.2f" % target_vert_angle_deg + "d : ")
-                      #nepi_msg.publishMsgWarn(self,"")
+                      #self.msg_if.pub_warn("")
+                      #self.msg_if.pub_warn(target_label)
+                      #self.msg_if.pub_warn(str(depth_box_adj.shape) + " detection box size")
+                      #self.msg_if.pub_warn("%.2f" % target_range_m + "m : " + "%.2f" % target_horz_angle_deg + "d : " + "%.2f" % target_vert_angle_deg + "d : ")
+                      #self.msg_if.pub_warn("")
 
                       #### Filter targets based on center location and min_px_ratio
                       valid_2d_target = True
@@ -1000,7 +1011,7 @@ class NepiAiTargetingApp(object):
                                   cent_in_y = box_y > box_mmy_list[i3][0] and box_y < box_mmy_list[i3][1]
                                   if cent_in_x and cent_in_y: # Check if target center is within a bigger box
                                       valid_2d_target = False
-                      #nepi_msg.publishMsgWarn(self,"Target Valid: " + target_label + " " + str(valid_2d_target))
+                      #self.msg_if.pub_warn("Target Valid: " + target_label + " " + str(valid_2d_target))
                       if valid_2d_target:
                           #### NEED TO Calculate Unique IDs
                           uid_suffix = 0
@@ -1011,8 +1022,8 @@ class NepiAiTargetingApp(object):
                           target_uids.append(target_uid)
                           bounding_box_3d_msg = None
 
-                          #nepi_msg.publishMsgWarn(self,"Target Selected: " + str(self.selected_target))
-                          #nepi_msg.publishMsgWarn(self,"Target Uid: " + str(target_uid))
+                          #self.msg_if.pub_warn("Target Selected: " + str(self.selected_target))
+                          #self.msg_if.pub_warn("Target Uid: " + str(target_uid))
                           if self.selected_target == "None" or self.selected_target == target_uid:
                               # Updated Bounding Box 2d
                               bounding_box_msg = BoundingBox()
@@ -1050,7 +1061,7 @@ class NepiAiTargetingApp(object):
                                   bbc.x = target_range_m * math.sin(theta_rad) * math.cos(phi_rad) - transform[0]
                                   bbc.y = target_range_m * math.sin(theta_rad) * math.sin(phi_rad) - transform[1]
                                   bbc.z = target_range_m * math.cos(theta_rad) - transform[2]
-                                  #nepi_msg.publishMsgWarn(self,[target_range_m,theta_deg,phi_deg,bbc.x, bbc.y,bbc.z])
+                                  #self.msg_if.pub_warn([target_range_m,theta_deg,phi_deg,bbc.x, bbc.y,bbc.z])
                                   bounding_box_3d_msg.box_center_m.x = bbc.x + target_depth / 2
                                   bounding_box_3d_msg.box_center_m.y = bbc.y
                                   bounding_box_3d_msg.box_center_m.z = bbc.z 
@@ -1083,7 +1094,7 @@ class NepiAiTargetingApp(object):
 
                                   # Now update range and bearing values based on transform
                                   target_range_m = math.sqrt(bbc.x**2 + bbc.y**2 + bbc.z**2)
-                                  #nepi_msg.publishMsgWarn(self,str([bbc.x,bbc.y,bbc.z]))
+                                  #self.msg_if.pub_warn(str([bbc.x,bbc.y,bbc.z]))
 
 
                                   try:
@@ -1140,13 +1151,13 @@ class NepiAiTargetingApp(object):
                                   }
                               active_targets_dict[target_uid] = current_targets_dict[target_uid]
 
-      #nepi_msg.publishMsgWarn(self,"Created active targets dict: " + str(active_targets_dict))
+      #self.msg_if.pub_warn("Created active targets dict: " + str(active_targets_dict))
       self.bbs_msg = bbs_msg
       self.active_targets_dict = active_targets_dict
       if current_targets_dict.keys() != self.current_targets_dict.keys():
           self.publish_targets()
       self.current_targets_dict = current_targets_dict
-      #nepi_msg.publishMsgWarn(self,self.current_targets_dict)
+      #self.msg_if.pub_warn(self.current_targets_dict)
       # Publish and Save 2D Bounding Boxes
       if len(bbs2d) > 0:
         bbs_msg.bounding_boxes = bbs2d
@@ -1181,7 +1192,7 @@ class NepiAiTargetingApp(object):
         nepi_save.save_dict2file(self,"target_boxes_2d",bbs_dict,ros_timestamp)
 
       # Publish and Save Target Localizations
-      #nepi_msg.publishMsgWarn(self,"Got tls list: " + str(tls))
+      #self.msg_if.pub_warn("Got tls list: " + str(tls))
       self.target_locs_lock.acquire()
       self.target_locs = tls      
       self.target_locs_lock.release()
@@ -1197,7 +1208,7 @@ class NepiAiTargetingApp(object):
         tls_msg.depth_header = self.depth_map_header
         tls_msg.target_localizations = tls
 
-        #nepi_msg.publishMsgWarn(self,"Will pub tls msg: " + str(tls_msg))
+        #self.msg_if.pub_warn("Will pub tls msg: " + str(tls_msg))
         if not nepi_ros.is_shutdown():
           self.target_localizations_pub.publish(tls_msg)
 
@@ -1234,8 +1245,8 @@ class NepiAiTargetingApp(object):
 
       # Publish and Save 3D Bounding Boxes
       self.target_box_3d_list = bbs3d
-      #nepi_msg.publishMsgWarn(self,"")
-      #nepi_msg.publishMsgWarn(self,bbs3d)
+      #self.msg_if.pub_warn("")
+      #self.msg_if.pub_warn(bbs3d)
       if len(bbs3d) > 0:
         bb3s_msg = BoundingBoxes3D()
         bb3s_msg.header = detect_header
@@ -1279,11 +1290,11 @@ class NepiAiTargetingApp(object):
   def imagePubCb(self,timer):
     data_product = 'targeting_image'
     has_subscribers = self.img_has_subs
-    #nepi_msg.publishMsgWarn(self,"Checking for subscribers: " + str(has_subscribers))
+    #self.msg_if.pub_warn("Checking for subscribers: " + str(has_subscribers))
     saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
     snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
     should_save = (saving_is_enabled and self.save_data_if.data_product_should_save(data_product)) or snapshot_enabled
-    #nepi_msg.publishMsgWarn(self,"Checking for save_: " + str(should_save))
+    #self.msg_if.pub_warn("Checking for save_: " + str(should_save))
     app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
     if app_enabled and self.image_sub is not None and self.classifier_running and self.classes_selected:
       if has_subscribers or should_save:
@@ -1338,7 +1349,7 @@ class NepiAiTargetingApp(object):
                     font, 
                     fontScale,
                     thickness)
-                #nepi_msg.publishMsgWarn(self,"Text Size: " + str(text_size))
+                #self.msg_if.pub_warn("Text Size: " + str(text_size))
                 line_height = text_size[0][1]
                 line_width = text_size[0][0]
                 bottomLeftCornerOfText = (xmin + line_thickness,ymin + line_thickness * 2 + line_height)
@@ -1358,7 +1369,7 @@ class NepiAiTargetingApp(object):
                     lineType)
               
                 # Overlay Data
-                #nepi_msg.publishMsgWarn(self,line_height)
+                #self.msg_if.pub_warn(line_height)
                 if target_range_m == -999:
                   tr = '#'
                 else:
@@ -1463,7 +1474,7 @@ class NepiAiTargetingApp(object):
   # Node Cleanup Function
   
   def cleanup_actions(self):
-    nepi_msg.publishMsgInfo(self," Shutting down: Executing script cleanup actions")
+    self.msg_if.pub_info(" Shutting down: Executing script cleanup actions")
 
 
 #########################################
