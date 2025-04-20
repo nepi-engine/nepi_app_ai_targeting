@@ -20,9 +20,6 @@ import os
 # ROS namespace setup
 NEPI_BASE_NAMESPACE = '/nepi/s2x/'
 os.environ["ROS_NAMESPACE"] = NEPI_BASE_NAMESPACE[0:-1] # remove to run as automation script
-import rospy
-
-
 
 import time
 import sys
@@ -202,44 +199,308 @@ class NepiAiTargetingApp(object):
 
     ##############################
     ### Setup Node
+
+
+    # Configs Config Dict ####################
+    self.CFGS_DICT = {
+            'init_callback': self.initCb,
+            'reset_callback': self.resetCb,
+            'factory_reset_callback': self.factoryResetCb,
+            'init_configs': True,
+            'namespace': self.node_namespace
+    }
+
+    # Params Config Dict ####################
+    self.PARAMS_DICT = {
+        'app_enabled': {
+            'namespace': self.node_namespace,
+            'factory_val': False
+        },
+        'image_fov_vert': {
+            'namespace': self.node_namespace,
+            'factory_val': self.FACTORY_FOV_VERT_DEG
+        },
+        'image_fov_horz': {
+            'namespace': self.node_namespace,
+            'factory_val': self.self.FACTORY_FOV_HORZ_DEG
+        },
+        'last_classifier': {
+            'namespace': self.node_namespace,
+            'factory_val': ""
+        },
+        'selected_classes_dict': {
+            'namespace': self.node_namespace,
+            'factory_val': []
+        },
+        'target_box_percent': {
+            'namespace': self.target_box_percent,
+            'factory_val': self.FACTORY_TARGET_BOX_SIZE_PERCENT
+        },
+        'default_target_depth': {
+            'namespace': self.node_namespace,
+            'factory_val': self.FACTORY_TARGET_DEPTH_METERS
+        },
+        'target_min_points': {
+            'namespace': self.node_namespace,
+            'factory_val': self.FACTORY_TARGET_MIN_POINTS
+        },
+        'target_min_px_ratio': {
+            'namespace': self.target_box_percent,
+            'factory_val': self.FACTORY_TARGET_MIN_PX_RATIO
+        },
+        'target_min_dist_m': {
+            'namespace': self.node_namespace,
+            'factory_val': self.FACTORY_TARGET_MIN_DIST_METERS
+        },
+        'target_age_filter': {
+            'namespace': self.node_namespace,
+            'factory_val': self.FACTORY_TARGET_MAX_AGE_SEC
+        },
+        'frame_3d_transform': {
+            'namespace': self.node_namespace,
+            'factory_val': self.ZERO_TRANSFORM
+        }
+
+    }
+
+    # Publishers Config Dict ####################
+    self.PUBS_DICT = {
+        'status': {
+            'namespace': self.node_namespace,
+            'topic': 'status',
+            'msg': AiTargetingStatus,
+            'qsize': 1,
+            'latch': True
+        },
+        'targets': {
+            'namespace': self.node_namespace,
+            'topic': 'targets',
+            'msg': AiTargetingTargets,
+            'qsize': 1,
+            'latch': True
+        },
+        'boxes_count': {
+            'namespace': self.node_namespace,
+            'topic': 'boxes_count',
+            'msg': ObjectCount,
+            'qsize': 1,
+            'latch': True
+        },
+        'boxes3d_count': {
+            'namespace': self.node_namespace,
+            'topic': 'boxes3d_count',
+            'msg': ObjectCount,
+            'qsize': 1,
+            'latch': True
+        },
+        'target_count': {
+            'namespace': self.node_namespace,
+            'topic': 'target_count',
+            'msg': ObjectCount,
+            'qsize': 1,
+            'latch': True
+        },
+        'target_boxes_2d': {
+            'namespace': self.node_namespace,
+            'topic': 'target_boxes_2d',
+            'msg': BoundingBoxes,
+            'qsize': 1,
+            'latch': True
+        },
+        'target_boxes_3d': {
+            'namespace': self.node_namespace,
+            'topic': 'target_boxes_3d',
+            'msg': BoundingBoxes3D,
+            'qsize': 1,
+            'latch': True
+        },
+        'target_localizations': {
+            'namespace': self.node_namespace,
+            'topic': 'target_localizations',
+            'msg': TargetLocalizations,
+            'qsize': 1,
+            'latch': True
+        },
+        'targeting_image': {
+            'namespace': self.node_namespace,
+            'topic': 'targeting_image',
+            'msg': Image,
+            'qsize': 1,
+            'latch': True
+        },
+
+    }
+
+    # Subscribers Config Dict ####################
+    self.SUBS_DICT = {
+        'publish_status': {
+            'namespace': self.node_namespace,
+            'topic': 'publish_status',
+            'msg': Empty,
+            'qsize': 10,
+            'callback': self.pubStatusCb, 
+            'callback_args': ()
+        },
+        'enable_app': {
+            'namespace': self.node_namespace,
+            'topic': 'enable_app',
+            'msg': Bool,
+            'qsize': 10,
+            'callback': self.appEnableCb, 
+            'callback_args': ()
+        },
+        'set_image_fov_vert': {
+            'namespace': self.node_namespace,
+            'topic': 'set_image_fov_vert',
+            'msg': Float32,
+            'qsize': 10,
+            'callback': self.setVertFovCb, 
+            'callback_args': ()
+        },
+        'set_image_fov_horz': {
+            'namespace': self.node_namespace,
+            'topic': 'set_image_fov_horz',
+            'msg': Float32,
+            'qsize': 10,
+            'callback': self.setHorzFovCb, 
+            'callback_args': ()
+        },
+        'add_all_target_classes': {
+            'namespace': self.node_namespace,
+            'topic': 'add_all_target_classes',
+            'msg': Empty,
+            'qsize': 10,
+            'callback': self.addAllClassesCb, 
+            'callback_args': ()
+        },
+        'add_target_class': {
+            'namespace': self.node_namespace,
+            'topic': 'add_target_class',
+            'msg': String,
+            'qsize': 10,
+            'callback': self.addClassCb, 
+            'callback_args': ()
+        },
+        'remove_target_class': {
+            'namespace': self.node_namespace,
+            'topic': 'remove_target_class',
+            'msg': String,
+            'qsize': 10,
+            'callback': self.removeClassCb, 
+            'callback_args': ()
+        },
+        'select_target': {
+            'namespace': self.node_namespace,
+            'topic': 'select_target',
+            'msg': String,
+            'qsize': 10,
+            'callback': self.selectTargetCb, 
+            'callback_args': ()
+        },
+        'set_target_box_size_percent': {
+            'namespace': self.node_namespace,
+            'topic': 'set_target_box_size_percent',
+            'msg': Int32,
+            'qsize': 10,
+            'callback': self.setTargetBoxPercentCb, 
+            'callback_args': ()
+        },
+        'set_default_target_detpth': {
+            'namespace': self.node_namespace,
+            'topic': 'set_default_target_detpth',
+            'msg': Float32,
+            'qsize': 10,
+            'callback': self.setDefaultTargetDepthCb, 
+            'callback_args': ()
+        },
+        'set_target_min_points': {
+            'namespace': self.node_namespace,
+            'topic': 'set_target_min_points',
+            'msg': Int32,
+            'qsize': 10,
+            'callback': self.setTargetMinPointsCb, 
+            'callback_args': ()
+        },
+        'set_target_min_px_ratio': {
+            'namespace': self.node_namespace,
+            'topic': 'set_target_min_px_ratio',
+            'msg': Float32,
+            'qsize': 10,
+            'callback': self.setTargetMinPxRatioCb, 
+            'callback_args': ()
+        },
+        'set_age_filter': {
+            'namespace': self.node_namespace,
+            'topic': 'set_age_filter',
+            'msg': Float32,
+            'qsize': 10,
+            'callback': self.setAgeFilterCb, 
+            'callback_args': ()
+        },
+        'set_frame_3d_transform': {
+            'namespace': self.node_namespace,
+            'topic': 'set_frame_3d_transform',
+            'msg': Frame3DTransform,
+            'qsize': 10,
+            'callback': self.setFrame3dTransformCb, 
+            'callback_args': ()
+        },
+        'clear_frame_3d_transform': {
+            'namespace': self.node_namespace,
+            'topic': 'clear_frame_3d_transform',
+            'msg': Empty,
+            'qsize': 10,
+            'callback': self.clearFrame3dTransformCb, 
+            'callback_args': ()
+        }
+        'found_object': {
+            'namespace': self.node_namespace,
+            'topic': '/found_object' #self.ai_mgr_namespace  + "/found_object"
+            'msg': ObjectCount,
+            'qsize': 1,
+            'callback': self.foundObjectCb, 
+            'callback_args': ()
+        },
+        'bounding_boxes': {
+            'namespace': self.node_namespace,
+            'topic': '/bounding_boxes' self.ai_mgr_namespace  + "/bounding_boxes"
+            'msg': BoundingBoxes,
+            'qsize': 1,
+            'callback': self.objectDetectedCb, 
+            'callback_args': ()
+        },
+        'image_topic': {
+            'namespace': self.node_namespace,
+            'topic': '/image_topic'
+            'msg': Image,
+            'qsize': 1,
+            'callback': self.imageCb, 
+            'callback_args': ()
+        },
+        'depth_map_topic': {
+            'namespace': self.node_namespace,
+            'topic': '/image_topic'
+            'msg': Image,
+            'qsize': 10,
+            'callback': self.depthMapCb, 
+            'callback_args': ()
+        }
+    }
+
+    # Create Node Class ####################
+    self.node_if = NodeClassIF(self,
+                    configs_dict = self.CFGS_DICT,
+                    params_dict = self.PARAMS_DICT,
+                    pubs_dict = self.PUBS_DICT,
+                    subs_dict = self.SUBS_DICT,
+                    log_class_name = True
+    )
+
+    ready = self.node_if.wait_for_ready()
+
     self.ai_mgr_namespace = os.path.join(self.base_namespace, self.AI_MANAGER_NODE_NAME)
    
-    # Setup Node Publishers
-    self.status_pub = rospy.Publisher("~status", AiTargetingStatus, queue_size=1, latch=True)
-    self.targets_pub = rospy.Publisher("~targets", AiTargetingTargets, queue_size=1, latch=True)
-    self.box_count_pub = rospy.Publisher("~boxes_count", ObjectCount, queue_size=1, latch=True)
-    self.box3d_count_pub = rospy.Publisher("~boxes3d_count", ObjectCount, queue_size=1, latch=True)
-    self.target_count_pub = rospy.Publisher("~target_count", ObjectCount, queue_size=1, latch=True)
 
-    self.target_boxes_2d_pub = rospy.Publisher("~target_boxes_2d", BoundingBoxes, queue_size=1)
-    self.target_boxes_3d_pub = rospy.Publisher("~target_boxes_3d", BoundingBoxes3D, queue_size=1)
-    self.target_localizations_pub = rospy.Publisher("~target_localizations", TargetLocalizations, queue_size=1)
-    self.image_pub = rospy.Publisher("~targeting_image",Image,queue_size=1, latch = True)
-    time.sleep(1)
-
-    # App Specific Subscribers
-    rospy.Subscriber('~publish_status', Empty, self.pubStatusCb, queue_size = 10)
-    rospy.Subscriber('~enable_app', Bool, self.appEnableCb, queue_size = 10)
-
-    rospy.Subscriber("~set_image_fov_vert", Float32, self.setVertFovCb, queue_size = 10)
-    rospy.Subscriber("~set_image_fov_horz", Float32, self.setHorzFovCb, queue_size = 10)
-
-    rospy.Subscriber('~add_all_target_classes', Empty, self.addAllClassesCb, queue_size = 10)
-    rospy.Subscriber('~remove_all_target_classes', Empty, self.removeAllClassesCb, queue_size = 10)
-    rospy.Subscriber('~add_target_class', String, self.addClassCb, queue_size = 10)
-    rospy.Subscriber('~remove_target_class', String, self.removeClassCb, queue_size = 10)
-    rospy.Subscriber('~select_target', String, self.selectTargetCb, queue_size = 10)
-
-    rospy.Subscriber("~set_target_box_size_percent", Int32, self.setTargetBoxPercentCb, queue_size = 10)
-    rospy.Subscriber("~set_default_target_detpth", Float32, self.setDefaultTargetDepthCb, queue_size = 10)
-    rospy.Subscriber("~set_target_min_points", Int32, self.setTargetMinPointsCb, queue_size = 10)
-    rospy.Subscriber("~set_target_min_px_ratio", Float32, self.setTargetMinPxRatioCb, queue_size = 10)
-    rospy.Subscriber("~set_age_filter", Float32, self.setAgeFilterCb, queue_size = 10)
-    rospy.Subscriber('~set_frame_3d_transform', Frame3DTransform, self.setFrame3dTransformCb, queue_size=1)
-    rospy.Subscriber('~clear_frame_3d_transform', Empty, self.clearFrame3dTransformCb, queue_size=1)
-
-    self.save_cfg_if = SaveCfgIF(initCb=self.initCb, resetCb=self.resetCb,  factoryResetCb=self.factoryResetCb)
-    ready = self.save_cfg_if.wait_for_ready()
 
     ##############################
     self.initCb(do_updates = True)
@@ -259,7 +520,7 @@ class NepiAiTargetingApp(object):
     cv2_img = nepi_img.create_message_image(message)
     self.app_ne_img = nepi_img.cv2img_to_rosimg(cv2_img)
     self.app_ne_img.header.stamp = nepi_ros.ros_time_now()
-    self.image_pub.publish(self.app_ne_img)
+    self.node_if.publish_pub('image_pub',self.app_ne_img)
 
     message = "WAITING FOR AI DETECTOR TO START"
     cv2_img = nepi_img.create_message_image(message)
@@ -272,12 +533,12 @@ class NepiAiTargetingApp(object):
     ##############################
     # Get AI Manager Service Call
     ##AI_MGR_STATUS_SERVICE_NAME = self.ai_mgr_namespace  + "/img_classifier_status_query"
-    #self.AI_MGR_STATUS_SERVICE_NAME = rospy.ServiceProxy(AI_MGR_STATUS_SERVICE_NAME, ImageClassifierStatusQuery)
+    #self.AI_MGR_STATUS_SERVICE_NAME = nepi_ros.connect_service(AI_MGR_STATUS_SERVICE_NAME, ImageClassifierStatusQuery)
     # Start AI Manager Subscribers
     FOUND_OBJECT_TOPIC = self.ai_mgr_namespace  + "/found_object"
-    rospy.Subscriber(FOUND_OBJECT_TOPIC, ObjectCount, self.foundObjectCb, queue_size = 1)
+    self.nepi_ros.create_subscriber(FOUND_OBJECT_TOPIC, ObjectCount, self.foundObjectCb, queue_size = 1)
     BOUNDING_BOXES_TOPIC = self.ai_mgr_namespace  + "/bounding_boxes"
-    rospy.Subscriber(BOUNDING_BOXES_TOPIC, BoundingBoxes, self.objectDetectedCb, queue_size = 1)
+    self.nepi_ros.create_subscriber(BOUNDING_BOXES_TOPIC, BoundingBoxes, self.objectDetectedCb, queue_size = 1)
     time.sleep(1)
 
     # Set up timer callbacks
@@ -302,23 +563,7 @@ class NepiAiTargetingApp(object):
 
 
   def factoryResetCb(self):
-
-    nepi_ros.set_param(self,"~app_enabled",False)
-
-    nepi_ros.set_param(self,'~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
-    nepi_ros.set_param(self,'~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
-    
-    nepi_ros.set_param(self,'~last_classifier', "")
-    nepi_ros.set_param(self,'~selected_classes_dict', dict())
-
-    nepi_ros.set_param(self,'~target_box_percent',  self.FACTORY_TARGET_BOX_SIZE_PERCENT)
-    nepi_ros.set_param(self,'~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
-    nepi_ros.set_param(self,'~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
-    nepi_ros.set_param(self,'~target_min_px_ratio', self.FACTORY_TARGET_MIN_PX_RATIO)
-    nepi_ros.set_param(self,'~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
-    nepi_ros.set_param(self,'~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
-    nepi_ros.set_param(self,'~frame_3d_transform', self.ZERO_TRANSFORM)
-    
+    self.node_if.get_param('app_enabled',False)
     self.last_image_topic = ""
     self.current_targets_dict = dict()
     self.lost_targets_dict = dict()
@@ -326,42 +571,10 @@ class NepiAiTargetingApp(object):
 
   def initCb(self,do_updates = False):
       self.msg_if.pub_info(" Setting init values to param values")
-
-      self.init_app_enabled = nepi_ros.get_param(self,"~app_enabled",False)
-
-      self.init_image_fov_vert = nepi_ros.get_param(self,'~image_fov_vert',  self.FACTORY_FOV_VERT_DEG)
-      self.init_image_fov_horz = nepi_ros.get_param(self,'~image_fov_horz', self.FACTORY_FOV_HORZ_DEG)
-
-      self.init_last_classifier = nepi_ros.get_param(self,"~last_classifier", "")
-      self.init_selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', dict())
-
-      self.init_target_box_adjust = nepi_ros.get_param(self,'~target_box_percent',  self.FACTORY_TARGET_BOX_SIZE_PERCENT)
-      self.init_default_target_depth = nepi_ros.get_param(self,'~default_target_depth',  self.FACTORY_TARGET_DEPTH_METERS)
-      self.init_target_min_points = nepi_ros.get_param(self,'~target_min_points', self.FACTORY_TARGET_MIN_POINTS)
-      self.init_target_min_px_ratio = nepi_ros.get_param(self,'~target_min_px_ratio', self.FACTORY_TARGET_MIN_PX_RATIO)
-      self.init_target_min_dist_m = nepi_ros.get_param(self,'~target_min_dist_m', self.FACTORY_TARGET_MIN_DIST_METERS)
-      self.init_target_age_filter = nepi_ros.get_param(self,'~target_age_filter', self.FACTORY_TARGET_MAX_AGE_SEC)
-      self.init_frame_3d_transform = nepi_ros.get_param(self,'~frame_3d_transform', self.ZERO_TRANSFORM)
       if do_updates == True:
         self.resetCb(do_updates)
 
   def resetCb(self):
-
-      nepi_ros.set_param(self,'~app_enabled',self.init_app_enabled)
-
-      nepi_ros.set_param(self,'~image_fov_vert',  self.init_image_fov_vert)
-      nepi_ros.set_param(self,'~image_fov_horz', self.init_image_fov_horz)
-
-      nepi_ros.set_param(self,'~last_classiier', self.init_last_classifier)
-      nepi_ros.set_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
-
-      nepi_ros.set_param(self,'~target_box_percent',  self.init_target_box_adjust)
-      nepi_ros.set_param(self,'~default_target_depth',  self.init_default_target_depth)
-      nepi_ros.set_param(self,'~target_min_points', self.init_target_min_points)
-      nepi_ros.set_param(self,'~target_min_px_ratio', self.init_target_min_px_ratio)
-      nepi_ros.get_param(self,'~target_min_dist_m', self.init_target_min_dist_m)
-      nepi_ros.set_param(self,'~target_age_filter', self.init_target_age_filter)
-      nepi_ros.set_param(self,'~frame_3d_transform', self.init_frame_3d_transform)
       self.publish_status()
 
 
@@ -427,7 +640,7 @@ class NepiAiTargetingApp(object):
     transform_msg.heading_offset = transform[6]
     status_msg.frame_3d_transform = transform_msg
 
-    self.status_pub.publish(status_msg)
+    self.node_if.publish_pub('status_pub', status_msg)
 
  
   ## Status Publisher
@@ -445,14 +658,14 @@ class NepiAiTargetingApp(object):
     targets_ms.available_targets_list = (avail_targets_list)
     targets_ms.selected_target = self.selected_target
     #self.msg_if.pub_warn(" Targets Msg: " + str(targets_ms))
-    self.targets_pub.publish(targets_ms)     
+    self.node_if.publish_pub('targets_pub', targets_ms)     
     
  
 
   def updaterCb(self,timer):
     self.last_image_topic = self.current_image_topic
     update_status = False
-    app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
+    app_enabled = self.node_if.get_param('app_enabled')
     app_msg = ""
     if app_enabled == False:
       self.target_detected = False
@@ -524,7 +737,7 @@ class NepiAiTargetingApp(object):
               self.image_sub = None
 
             self.msg_if.pub_info(" Subscribing to Image topic : " + image_topic)
-            self.image_sub = rospy.Subscriber(image_topic, Image, self.imageCb, queue_size = 1)
+            self.image_sub = self.nepi_ros.create_subscriber(image_topic, Image, self.imageCb, queue_size = 1)
 
             # Look for Depth Map
             depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
@@ -542,7 +755,7 @@ class NepiAiTargetingApp(object):
                 self.depth_map_sub = None
                 time.sleep(1)
               self.msg_if.pub_info(" Subscribing to Depth Map topic : " + depth_map_topic)
-              self.depth_map_sub = rospy.Subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
+              self.depth_map_sub = self.nepi_ros.create_subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
               update_status = True
               
               # If there is a depth_map, check for pointdcloud
@@ -582,15 +795,15 @@ class NepiAiTargetingApp(object):
         #self.msg_if.pub_warn("Publishing Not Enabled image")
         if not nepi_ros.is_shutdown():
           self.app_ne_img.header.stamp = nepi_ros.ros_time_now()
-          self.image_pub.publish(self.app_ne_img)
+          self.node_if.publish_pub('image_pub', self.app_ne_img)
       elif self.classifier_running == False:
         if not nepi_ros.is_shutdown():
           self.classifier_nr_img.header.stamp = nepi_ros.ros_time_now()
-          self.image_pub.publish(self.classifier_nr_img)
+          self.node_if.publish_pub('image_pub', self.classifier_nr_img)
       elif self.classes_selected == False:
         if not nepi_ros.is_shutdown():
           self.no_class_img.header.stamp = nepi_ros.ros_time_now()
-          self.image_pub.publish(self.no_class_img)
+          self.node_if.publish_pub('image_pub', self.no_class_img)
 
       # Check for img subscribers
       if self.image_sub is not None:
@@ -796,7 +1009,7 @@ class NepiAiTargetingApp(object):
 
   ### If object(s) detected, save bounding box info to global
   def objectDetectedCb(self,bounding_boxes_msg):
-    app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
+    app_enabled = self.node_if.get_param('app_enabled')
     ros_timestamp = bounding_boxes_msg.header.stamp
 
     if app_enabled == False:
@@ -1163,11 +1376,11 @@ class NepiAiTargetingApp(object):
         bbs_msg.bounding_boxes = bbs2d
         if not nepi_ros.is_shutdown():
 
-          self.target_boxes_2d_pub.publish(bbs_msg)
+          self.node_if.publish_pub('target_boxes_2d_pub', bbs_msg)
           oc_msg = ObjectCount()
           oc_msg.header = detect_header
           oc_msg.count = len(bbs_msg.bounding_boxes)
-          self.box_count_pub.publish(oc_msg)
+          self.node_if.publish_pub('box_count_pub', oc_msg)
         # Save Data if it is time.
         bbs_dict = dict()
         bbs_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(bbs_msg.header.stamp)
@@ -1210,7 +1423,7 @@ class NepiAiTargetingApp(object):
 
         #self.msg_if.pub_warn("Will pub tls msg: " + str(tls_msg))
         if not nepi_ros.is_shutdown():
-          self.target_localizations_pub.publish(tls_msg)
+          self.node_if.publish_pub('target_localizations_pub', tls_msg)
 
         # Save Data if Time
         tls_dict = dict()
@@ -1240,7 +1453,7 @@ class NepiAiTargetingApp(object):
       tc_msg = ObjectCount()
       tc_msg.header = detect_header
       tc_msg.count = len(tls)
-      self.target_count_pub.publish(tc_msg)
+      self.node_if.publish_pub('target_count_pub', tc_msg)
 
 
       # Publish and Save 3D Bounding Boxes
@@ -1258,11 +1471,11 @@ class NepiAiTargetingApp(object):
         bb3s_msg.depth_map_topic = self.depth_map_topic
         bb3s_msg.bounding_boxes_3d = bbs3d
         if not nepi_ros.is_shutdown():
-          self.target_boxes_3d_pub.publish(bb3s_msg)
+          self.node_if.publish_pub('target_boxes_3d_pub', bb3s_msg)
           oc3_msg = ObjectCount()
           oc3_msg.header = detect_header
           oc3_msg.count = len(bbs3d)
-          self.box3d_count_pub.publish(oc3_msg)
+          self.node_if.publish_pub('box3d_count_pub', oc3_msg)
 
         # Save Data if Time
         bb3s_dict = dict()
@@ -1295,7 +1508,7 @@ class NepiAiTargetingApp(object):
     snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
     should_save = (saving_is_enabled and self.save_data_if.data_product_should_save(data_product)) or snapshot_enabled
     #self.msg_if.pub_warn("Checking for save_: " + str(should_save))
-    app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
+    app_enabled = self.node_if.get_param('app_enabled')
     if app_enabled and self.image_sub is not None and self.classifier_running and self.classes_selected:
       if has_subscribers or should_save:
         self.img_lock.acquire()
@@ -1308,7 +1521,7 @@ class NepiAiTargetingApp(object):
           self.target_locs_lock.release()
           if len(tls) == 0:
             if img_msg is not None and self.img_has_subs and not nepi_ros.is_shutdown():
-              self.image_pub.publish(img_msg)
+              self.node_if.publish_pub('image_pub', img_msg)
           else:
               current_image_header = img_msg.header
               ros_timestamp = img_msg.header.stamp     
@@ -1416,7 +1629,7 @@ class NepiAiTargetingApp(object):
                     encode = 'mono8'
                   img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding=encode)
                   img_out_msg.header.stamp = ros_timestamp
-                  self.image_pub.publish(img_out_msg)
+                  self.node_if.publish_pub('image_pub', img_out_msg)
               # Save Data if Time
               if should_save:
                 nepi_save.save_img2file(self,data_product,cv2_img,ros_timestamp,save_check = False)
@@ -1433,7 +1646,7 @@ class NepiAiTargetingApp(object):
 
   ### Monitor Output of AI model to clear detection status
   def foundObjectCb(self,found_obj_msg):
-    app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
+    app_enabled = self.node_if.get_param('app_enabled')
 
     #Clean Up
     if found_obj_msg.count != 0:
@@ -1451,8 +1664,8 @@ class NepiAiTargetingApp(object):
       tc_msg = ObjectCount()
       tc_msg.header = found_obj_msg.header
       tc_msg.count = 0
-      self.target_count_pub.publish(tc_msg)
-      self.box3d_count_pub.publish(tc_msg)
+      self.node_if.publish_pub('target_count_pub', tc_msg)
+      self.node_if.publish_pub('box3d_count_pub', tc_msg)
 
 
   def depthMapCb(self,depth_map_msg):
