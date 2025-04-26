@@ -34,8 +34,6 @@ import matplotlib.pyplot as plt
 
 from nepi_sdk import nepi_ros
 from nepi_sdk import nepi_utils
-from nepi_sdk import nepi_save
-from nepi_sdk import nepi_msg
 from nepi_sdk import nepi_pc 
 from nepi_sdk import nepi_img 
 
@@ -55,8 +53,8 @@ from nepi_app_ai_targeting.msg import AiTargetingStatus, AiTargetingTargets
 from nepi_api.node_if import NodeClassIF
 from nepi_api.messages_if import MsgIF
 from nepi_api.connect_node_if import ConnectNodeClassIF
-from nepi_api.sys_if_save_data import SaveDataIF
-from nepi_api.sys_if_save_cfg import SaveCfgIF
+from nepi_api.system_if import SaveDataIF
+from nepi_api.system_if import SaveCfgIF
 
 # Do this at the end
 #from scipy.signal import find_peaks
@@ -193,8 +191,7 @@ class NepiAiTargetingApp(object):
     self.msg_if.pub_info("Starting IF Initialization Processes")
 
     ##############################     
-    # Init Param Server
-    self.initCb(do_updates = False)
+    # Initialize Class Variables
 
 
     ##############################
@@ -1402,7 +1399,7 @@ class NepiAiTargetingApp(object):
             bb_dict['area_ratio'] = bb_msg.area_ratio
             bb_list.append(bb_dict)
         bbs_dict['bounding_boxes'] = bb_list
-        nepi_save.save_dict2file(self,"target_boxes_2d",bbs_dict,ros_timestamp)
+        self.save_data_if.save_dict2file("target_boxes_2d",bbs_dict,ros_timestamp)
 
       # Publish and Save Target Localizations
       #self.msg_if.pub_warn("Got tls list: " + str(tls))
@@ -1447,7 +1444,7 @@ class NepiAiTargetingApp(object):
             tl_dict['area_ratio'] = tl_msg.area_ratio
             tl_list.append(tl_dict)
         tls_dict['target_locs'] = tl_list
-        nepi_save.save_dict2file(self,'target_localizations',tls_dict,ros_timestamp)
+        self.save_data_if.save_dict2file('target_localizations',tls_dict,ros_timestamp)
 
       # Pub target count
       tc_msg = ObjectCount()
@@ -1497,7 +1494,7 @@ class NepiAiTargetingApp(object):
             bb3_dict['volume_meters'] = bb3_msg.volume_meters
             bb3_list.append(bb3_dict)
         bb3s_dict['bounding_boxes_3d'] = bb3_list
-        nepi_save.save_dict2file(self,'target_boxes_3d',bb3s_dict,ros_timestamp)
+        self.save_data_if.save_dict2file('target_boxes_3d',bb3s_dict,ros_timestamp)
 
 
   def imagePubCb(self,timer):
@@ -1632,7 +1629,7 @@ class NepiAiTargetingApp(object):
                   self.node_if.publish_pub('image_pub', img_out_msg)
               # Save Data if Time
               if should_save:
-                nepi_save.save_img2file(self,data_product,cv2_img,ros_timestamp,save_check = False)
+                self.save_data_if.save_img2file(data_product,cv2_img,ros_timestamp,save_check = False)
 
 
 
