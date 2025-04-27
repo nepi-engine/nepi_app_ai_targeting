@@ -579,12 +579,12 @@ class NepiAiTargetingApp(object):
   def publish_status(self):
     status_msg = AiTargetingStatus()
 
-    status_msg.app_enabled = nepi_ros.get_param(self,'~app_enabled',self.init_app_enabled)
+    status_msg.app_enabled = self.node_if.get_param('app_enabled')
     status_msg.app_msg = self.app_msg
 
     status_msg.image_topic = self.current_image_topic
-    status_msg.image_fov_vert_degs = nepi_ros.get_param(self,'~image_fov_vert',  self.init_image_fov_vert)
-    status_msg.image_fov_horz_degs = nepi_ros.get_param(self,'~image_fov_horz', self.init_image_fov_horz)
+    status_msg.image_fov_vert_degs = self.node_if.get_param('image_fov_vert')
+    status_msg.image_fov_horz_degs = self.node_if.get_param('image_fov_horz')
 
     status_msg.has_depth_map = self.has_depth_map
     status_msg.depth_map_topic = self.depth_map_topic
@@ -599,7 +599,7 @@ class NepiAiTargetingApp(object):
       avail_classes = ["None"]
     avail_classes = sorted(avail_classes)
     status_msg.available_classes_list = avail_classes
-    selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+    selected_classes_dict = self.node_if.get_param('selected_classes_dict')
     purge_class_list = []
     for key in selected_classes_dict.keys():
       if key not in avail_classes:
@@ -618,14 +618,14 @@ class NepiAiTargetingApp(object):
     status_msg.selected_classes_depth_list = (depth_list)
 
 
-    status_msg.target_box_size_percent = nepi_ros.get_param(self,'~target_box_percent',  self.init_target_box_adjust)
-    status_msg.default_target_depth_m = nepi_ros.get_param(self,'~default_target_depth',  self.init_default_target_depth)
-    status_msg.target_min_points = nepi_ros.get_param(self,'~target_min_points', self.init_target_min_points)
-    status_msg.target_min_px_ratio = nepi_ros.get_param(self,'~target_min_px_ratio', self.init_target_min_px_ratio)
-    status_msg.target_min_dist_m = nepi_ros.get_param(self,'~target_min_dist_m', self.init_target_min_dist_m)
-    status_msg.target_age_filter = nepi_ros.get_param(self,'~target_age_filter', self.init_target_age_filter)
+    status_msg.target_box_size_percent = self.node_if.get_param('target_box_percent')
+    status_msg.default_target_depth_m = self.node_if.get_param('default_target_depth')
+    status_msg.target_min_points = self.node_if.get_param('target_min_points')
+    status_msg.target_min_px_ratio = self.node_if.get_param('target_min_px_ratio')
+    status_msg.target_min_dist_m = self.node_if.get_param('target_min_dist_m')
+    status_msg.target_age_filter = self.node_if.get_param('target_age_filter')
     # The transfer frame for target data adjustments from image's native frame to the nepi center frame
-    transform = nepi_ros.get_param(self,'~frame_3d_transform',  self.init_frame_3d_transform)
+    transform = self.node_if.get_param('frame_3d_transform')
     transform_msg = Frame3DTransform()
     transform_msg.translate_vector.x = transform[0]
     transform_msg.translate_vector.y = transform[1]
@@ -683,7 +683,7 @@ class NepiAiTargetingApp(object):
     except Exception as e:
       self.msg_if.pub_warn("Failed to call AI MGR STATUS service" + str(e))
       self.classifier_running = False
-      nepi_ros.set_param(self,'~last_classiier', "")
+      self.node_if.set_param('last_classiier', "")
       app_msg += ", AI Detector not connected"
     if ai_mgr_status_response != None:
       app_msg += ", AI Detector connected"
@@ -708,7 +708,7 @@ class NepiAiTargetingApp(object):
             rgb_list.append(rgb)
           self.class_color_list = rgb_list
       self.classes_list = classes_list
-      nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
+      self.node_if.set_param('last_classiier', self.current_classifier)
       #self.msg_if.pub_warn(" Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
 
       # Update Image Topic Subscriber
@@ -780,7 +780,7 @@ class NepiAiTargetingApp(object):
 
       # Print a message image if needed
 
-      selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+      selected_classes_dict = self.node_if.get_param('selected_classes_dict')
       classes_sel = False
       for key in selected_classes_dict.keys():
         if key in self.classes_list:
@@ -807,7 +807,7 @@ class NepiAiTargetingApp(object):
       active_targets_dict = copy.deepcopy(self.active_targets_dict)
       lost_targets_dict = copy.deepcopy(self.lost_targets_dict)
       purge_list = []
-      age_filter_sec = nepi_ros.get_param(self,'~target_age_filter', self.init_target_age_filter)
+      age_filter_sec = self.node_if.get_param('target_age_filter')
       #self.msg_if.pub_warn(active_targets_dict)
       for target in active_targets_dict.keys():
         last_timestamp = active_targets_dict[target]['last_detection_timestamp']
@@ -864,41 +864,41 @@ class NepiAiTargetingApp(object):
   def appEnableCb(self,msg):
     #self.msg_if.pub_info(msg)
     val = msg.data
-    nepi_ros.set_param(self,'~app_enabled',val)
+    self.node_if.set_param('app_enabled',val)
     self.publish_status()
 
   def addAllClassesCb(self,msg):
     ##self.msg_if.pub_info(msg)
     classes = self.classes_list
-    depth = nepi_ros.get_param(self,'~default_target_depth',self.init_default_target_depth)
+    depth = self.node_if.get_param('default_target_depth')
     selected_dict = dict()
     for Class in classes:
       selected_dict[Class] = {'depth': depth }
-    nepi_ros.set_param(self,'~selected_classes_dict', selected_dict)
+    self.node_if.set_param('selected_classes_dict', selected_dict)
     self.publish_status()
 
   def removeAllClassesCb(self,msg):
     ##self.msg_if.pub_info(msg)
-    nepi_ros.set_param(self,'~selected_classes_dict', dict())
+    self.node_if.set_param('selected_classes_dict', dict())
     self.publish_status()
 
   def addClassCb(self,msg):
     ##self.msg_if.pub_info(msg)
     class_name = msg.data
-    class_depth_m = nepi_ros.get_param(self,'~default_target_depth',  self.init_default_target_depth)
+    class_depth_m = self.node_if.get_param('default_target_depth')
     if class_name in self.classes_list:
-      selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+      selected_classes_dict = self.node_if.get_param('selected_classes_dict')
       selected_classes_dict[class_name] = {'depth': class_depth_m}
-      nepi_ros.set_param(self,'~selected_classes_dict', selected_classes_dict)
+      self.node_if.set_param('selected_classes_dict', selected_classes_dict)
     self.publish_status()
 
   def removeClassCb(self,msg):
     ##self.msg_if.pub_info(msg)
     class_name = msg.data
-    selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+    selected_classes_dict = self.node_if.get_param('selected_classes_dict')
     if class_name in selected_classes_dict.keys():
       del selected_classes_dict[class_name]
-    nepi_ros.set_param(self,'~selected_classes_dict', selected_classes_dict)
+    self.node_if.set_param('selected_classes_dict', selected_classes_dict)
     self.publish_status()
 
 
@@ -913,7 +913,7 @@ class NepiAiTargetingApp(object):
     ##self.msg_if.pub_info(msg)
     fov = msg.data
     if fov > 0:
-      nepi_ros.set_param(self,'~image_fov_vert',  fov)
+      self.node_if.set_param('image_fov_vert',  fov)
     self.publish_status()
 
 
@@ -921,49 +921,49 @@ class NepiAiTargetingApp(object):
     ##self.msg_if.pub_info(msg)
     fov = msg.data
     if fov > 0:
-      nepi_ros.set_param(self,'~image_fov_horz',  fov)
+      self.node_if.set_param('image_fov_horz',  fov)
     self.publish_status()
     
   def setTargetBoxPercentCb(self,msg):
     #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 10 and val <= 200:
-      nepi_ros.set_param(self,'~target_box_percent',val)
+      self.node_if.set_param('target_box_percent',val)
     self.publish_status()   
       
   def setDefaultTargetDepthCb(self,msg):
     #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 0:
-      nepi_ros.set_param(self,'~default_target_depth',val)
+      self.node_if.set_param('default_target_depth',val)
     self.publish_status()   
 
   def setTargetMinPointsCb(self,msg):
     #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 0:
-      nepi_ros.set_param(self,'~target_min_points',val)
+      self.node_if.set_param('target_min_points',val)
     self.publish_status() 
 
   def setTargetMinPxRatioCb(self,msg):
     #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 0 and val <= 1:
-      nepi_ros.set_param(self,'~target_min_px_ratio',val)
+      self.node_if.set_param('target_min_px_ratio',val)
     self.publish_status() 
 
   def setTargetMinDistMCb(self,msg):
     #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 0:
-      nepi_ros.set_param(self,'~target_min_dist_m',val)
+      self.node_if.set_param('target_min_dist_m',val)
     self.publish_status() 
 
   def setAgeFilterCb(self,msg):
     #self.msg_if.pub_info(msg)
     val = msg.data
     if val >= 0:
-      nepi_ros.set_param(self,'~target_age_filter',val)
+      self.node_if.set_param('target_age_filter',val)
     self.publish_status()
 
   def setFrame3dTransformCb(self, msg):
@@ -981,7 +981,7 @@ class NepiAiTargetingApp(object):
       yaw = transform_msg.rotate_vector.z
       heading = transform_msg.heading_offset
       transform = [x,y,z,roll,pitch,yaw,heading]
-      nepi_ros.set_param(self,'~frame_3d_transform',  transform)
+      self.node_if.set_param('frame_3d_transform',  transform)
       #self.msg_if.pub_info("AI_TARG_APP: Updated Transform: " + str(transform))
 
   def clearFrame3dTransformCb(self, msg):
@@ -990,7 +990,7 @@ class NepiAiTargetingApp(object):
 
   def clearFrame3dTransform(self, transform_msg):
       transform = self.ZERO_TRANSFORM
-      self.init_frame_3d_transform = nepi_ros.set_param(self,'~idx/frame_3d_transform',  transform)
+      self.node_if.set_param('idx/frame_3d_transform',  transform)
       self.status_msg.frame_3d_transform = transform_msg
       self.publishStatus(do_updates=False) # Updated inline here 
 
@@ -1015,8 +1015,8 @@ class NepiAiTargetingApp(object):
       ros_timestamp = bounding_boxes_msg.header.stamp
       image_seq_num = bounding_boxes_msg.header.seq
       bbs_msg=copy.deepcopy(bounding_boxes_msg)
-      transform = nepi_ros.get_param(self,'~frame_3d_transform', self.init_frame_3d_transform)
-      selected_classes_dict = nepi_ros.get_param(self,'~selected_classes_dict', self.init_selected_classes_dict)
+      transform = self.node_if.get_param('frame_3d_transform')
+      selected_classes_dict = self.node_if.get_param('selected_classes_dict')
 
       # Process targets
       active_targets_dict = copy.deepcopy(self.active_targets_dict)
@@ -1029,12 +1029,12 @@ class NepiAiTargetingApp(object):
       if self.img_height != 0 and self.img_width != 0:
           # Iterate over all of the objects and calculate range and bearing data
           
-          image_fov_vert = nepi_ros.get_param(self,'~image_fov_vert',  self.init_image_fov_vert)
-          image_fov_horz = nepi_ros.get_param(self,'~image_fov_horz', self.init_image_fov_horz)
-          target_box_adjust_percent = nepi_ros.get_param(self,'~target_box_percent',  self.init_target_box_adjust)
-          target_min_points = nepi_ros.get_param(self,'~target_min_points',  self.init_target_min_points)    
-          target_min_px_ratio = nepi_ros.get_param(self,'~target_min_px_ratio', self.init_target_min_px_ratio)
-          target_min_dist_m = nepi_ros.get_param(self,'~target_min_dist_m', self.init_target_min_dist_m)
+          image_fov_vert = self.node_if.get_param('image_fov_vert')
+          image_fov_horz = self.node_if.get_param('image_fov_horz')
+          target_box_adjust_percent = self.node_if.get_param('target_box_percent')
+          target_min_points = self.node_if.get_param('target_min_points')    
+          target_min_px_ratio = self.node_if.get_param('target_min_px_ratio')
+          target_min_dist_m = self.node_if.get_param('target_min_dist_m')
           target_uids = []
           if bbs_msg is not None:
               box_class_list = []
