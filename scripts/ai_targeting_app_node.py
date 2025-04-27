@@ -55,6 +55,7 @@ from nepi_api.messages_if import MsgIF
 from nepi_api.connect_node_if import ConnectNodeClassIF
 from nepi_api.system_if import SaveDataIF
 from nepi_api.system_if import SaveCfgIF
+from nepi_api.data_if import ImageIF
 
 # Do this at the end
 #from scipy.signal import find_peaks
@@ -144,7 +145,6 @@ class NepiAiTargetingApp(object):
   targeting_class_list = []
   targeting_target_list = []
   detection_image_pub = None
-  image_pub = None
 
 
   classifier_running = False
@@ -173,7 +173,6 @@ class NepiAiTargetingApp(object):
   img_has_subs = False
 
   last_app_enabled = False
-  last_trigger_time = nepi_ros.ros_time_now()
   #######################
   ### Node Initialization
   DEFAULT_NODE_NAME = "app_ai_targeting" # Can be overwitten by luanch command
@@ -317,14 +316,7 @@ class NepiAiTargetingApp(object):
             'msg': TargetLocalizations,
             'qsize': 1,
             'latch': True
-        },
-        'targeting_image': {
-            'namespace': self.node_namespace,
-            'topic': 'targeting_image',
-            'msg': Image,
-            'qsize': 1,
-            'latch': True
-        },
+        }
 
     }
 
@@ -494,6 +486,13 @@ class NepiAiTargetingApp(object):
     )
 
     ready = self.node_if.wait_for_ready()
+
+
+    # Setup Image IF
+    self.image_if = ImageIF(namespace = self.node_namespace, topic = 'targeting_image')
+
+
+
 
     self.ai_mgr_namespace = os.path.join(self.base_namespace, self.AI_MANAGER_NODE_NAME)
    
@@ -792,19 +791,15 @@ class NepiAiTargetingApp(object):
         #self.msg_if.pub_warn("Publishing Not Enabled image")
         if not nepi_ros.is_shutdown():
           self.app_ne_img.header.stamp = nepi_ros.ros_time_now()
-          self.node_if.publish_pub('image_pub', self.app_ne_img)
+          self.image_if.publish_cv2_image(self.app_ne_img)
       elif self.classifier_running == False:
         if not nepi_ros.is_shutdown():
           self.classifier_nr_img.header.stamp = nepi_ros.ros_time_now()
-          self.node_if.publish_pub('image_pub', self.classifier_nr_img)
+          self.image_if.publish_cv2_image(self.classifier_nr_img)
       elif self.classes_selected == False:
         if not nepi_ros.is_shutdown():
           self.no_class_img.header.stamp = nepi_ros.ros_time_now()
-          self.node_if.publish_pub('image_pub', self.no_class_img)
-
-      # Check for img subscribers
-      if self.image_sub is not None:
-        self.img_has_subs = (self.image_sub.get_num_connections() > 0)
+          self.image_if.publish_cv2_image(self.no_class_img)
 
 
       # Update Current Targets List based on Age and Publish
@@ -1499,14 +1494,15 @@ class NepiAiTargetingApp(object):
 
   def imagePubCb(self,timer):
     data_product = 'targeting_image'
-    has_subscribers = self.img_has_subs
-    #self.msg_if.pub_warn("Checking for subscribers: " + str(has_subscribers))
-    saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
-    snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
-    should_save = (saving_is_enabled and self.save_data_if.data_product_should_save(data_product)) or snapshot_enabled
-    #self.msg_if.pub_warn("Checking for save_: " + str(should_save))
     app_enabled = self.node_if.get_param('app_enabled')
     if app_enabled and self.image_sub is not None and self.classifier_running and self.classes_selected:
+      has_subscribers = self.image_if.has_subscribers_check()
+      #self.msg_if.pub_warn("Checking for subscribers: " + str(has_subscribers))
+      saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
+      snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
+      should_save = (saving_is_enabled and self.save_data_if.data_product_should_save(data_product)) or snapshot_enabled
+      #self.msg_if.pub_warn("Checking for save_: " + str(should_save))
+
       if has_subscribers or should_save:
         self.img_lock.acquire()
         img_msg = copy.deepcopy(self.img_msg)
@@ -1516,120 +1512,115 @@ class NepiAiTargetingApp(object):
           self.target_locs_lock.acquire()
           tls = self.target_locs      
           self.target_locs_lock.release()
-          if len(tls) == 0:
-            if img_msg is not None and self.img_has_subs and not nepi_ros.is_shutdown():
-              self.node_if.publish_pub('image_pub', img_msg)
-          else:
-              current_image_header = img_msg.header
-              ros_timestamp = img_msg.header.stamp     
-              cv2_img = nepi_img.rosimg_to_cv2img(img_msg).astype(np.uint8)
+
+          current_image_header = img_msg.header
+          ros_timestamp = img_msg.header.stamp     
+          cv2_img = nepi_img.rosimg_to_cv2img(img_msg).astype(np.uint8)
+          cv2_shape = cv2_img.shape
+          self.img_width = cv2_shape[1] 
+          self.img_height = cv2_shape[0]   
+        
+          for target_loc in tls:
+            class_name = target_loc.Class
+            target_uid = target_loc.uid
+            target_range_m = target_loc.range_m
+            target_horz_angle_deg = target_loc.azimuth_deg
+            target_vert_angle_deg = target_loc.elevation_deg
+            ###### Apply Image Overlays and Publish Targeting_Image ROS Message
+            # Overlay adjusted detection boxes on image 
+            [xmin,xmax,ymin,ymax] = [target_loc.xmin,target_loc.xmax,target_loc.ymin,target_loc.ymax]
+            start_point = (xmin, ymin)
+            end_point = (xmax, ymax)
+            class_name = class_name
+
+            class_color = (255,0,0)
+            if class_name in self.classes_list:
+                class_ind = self.classes_list.index(class_name)
+                if class_ind < len(self.class_color_list):
+                    class_color = tuple(self.class_color_list[class_ind])
+            line_thickness = 2
+            cv2.rectangle(cv2_img, start_point, end_point, class_color, thickness=line_thickness)
+            # Overlay text data on OpenCV image
+            font                   = cv2.FONT_HERSHEY_DUPLEX
+            fontScale, thickness  = nepi_img.optimal_font_dims(cv2_img,font_scale = 1.5e-3, thickness_scale = 1.5e-3)
+            fontColor = (255, 255, 255)
+            lineType = 1
+
+            ## Overlay Label
+            text2overlay=target_uid
+            text_size = cv2.getTextSize(text2overlay, 
+                font, 
+                fontScale,
+                thickness)
+            #self.msg_if.pub_warn("Text Size: " + str(text_size))
+            line_height = text_size[0][1]
+            line_width = text_size[0][0]
+            bottomLeftCornerOfText = (xmin + line_thickness,ymin + line_thickness * 2 + line_height)
+            # Create Text Background Box
+            padding = int(line_height*0.4)
+            start_point = (bottomLeftCornerOfText[0]-padding, bottomLeftCornerOfText[1]-line_height-padding)
+            end_point = (bottomLeftCornerOfText[0]+line_width+padding, bottomLeftCornerOfText[1]+padding)
+            box_color = [0,0,0]
+            cv2.rectangle(cv2_img, start_point, end_point, box_color , -1)
+
+            cv2.putText(cv2_img,text2overlay, 
+                bottomLeftCornerOfText, 
+                font, 
+                fontScale,
+                fontColor,
+                thickness,
+                lineType)
+          
+            # Overlay Data
+            #self.msg_if.pub_warn(line_height)
+            if target_range_m == -999:
+              tr = '#'
+            else:
+              tr = ("%.1f" % target_range_m )
+            if target_horz_angle_deg == -999:
+              th = '#'
+            else:
+              th = ("%.f" % target_horz_angle_deg)
+
+            if target_vert_angle_deg == -999:
+              tv = '#'
+            else:
+              tv = ("%.f" % target_vert_angle_deg)
+
+            text2overlay= tr + "m," + th + "d," + tv + "d"
+            text_size = cv2.getTextSize(text2overlay, 
+                font, 
+                fontScale,
+                thickness)
+            line_height = text_size[0][1]
+            line_width = text_size[0][0]
+            bottomLeftCornerOfText = (xmin + line_thickness,ymin + line_thickness * 2 + line_height * 3)
+            # Create Text Background Box
+            padding = int(line_height*0.4)
+            start_point = (bottomLeftCornerOfText[0]-padding, bottomLeftCornerOfText[1]-line_height-padding)
+            end_point = (bottomLeftCornerOfText[0]+line_width+padding, bottomLeftCornerOfText[1]+padding)
+            box_color = [0,0,0]
+            cv2.rectangle(cv2_img, start_point, end_point, box_color , -1)
+            cv2.putText(cv2_img,text2overlay, 
+                bottomLeftCornerOfText, 
+                font, 
+                fontScale,
+                fontColor,
+                thickness,
+                lineType) 
+
+          # Publish new image to ros
+          if not nepi_ros.is_shutdown() and has_subscribers: #and has_subscribers:
+              #Convert OpenCV image to ROS image
               cv2_shape = cv2_img.shape
-              self.img_width = cv2_shape[1] 
-              self.img_height = cv2_shape[0]   
-            
-              for target_loc in tls:
-                class_name = target_loc.Class
-                target_uid = target_loc.uid
-                target_range_m = target_loc.range_m
-                target_horz_angle_deg = target_loc.azimuth_deg
-                target_vert_angle_deg = target_loc.elevation_deg
-                ###### Apply Image Overlays and Publish Targeting_Image ROS Message
-                # Overlay adjusted detection boxes on image 
-                [xmin,xmax,ymin,ymax] = [target_loc.xmin,target_loc.xmax,target_loc.ymin,target_loc.ymax]
-                start_point = (xmin, ymin)
-                end_point = (xmax, ymax)
-                class_name = class_name
-    
-                class_color = (255,0,0)
-                if class_name in self.classes_list:
-                    class_ind = self.classes_list.index(class_name)
-                    if class_ind < len(self.class_color_list):
-                        class_color = tuple(self.class_color_list[class_ind])
-                line_thickness = 2
-                cv2.rectangle(cv2_img, start_point, end_point, class_color, thickness=line_thickness)
-                # Overlay text data on OpenCV image
-                font                   = cv2.FONT_HERSHEY_DUPLEX
-                fontScale, thickness  = nepi_img.optimal_font_dims(cv2_img,font_scale = 1.5e-3, thickness_scale = 1.5e-3)
-                fontColor = (255, 255, 255)
-                lineType = 1
-
-                ## Overlay Label
-                text2overlay=target_uid
-                text_size = cv2.getTextSize(text2overlay, 
-                    font, 
-                    fontScale,
-                    thickness)
-                #self.msg_if.pub_warn("Text Size: " + str(text_size))
-                line_height = text_size[0][1]
-                line_width = text_size[0][0]
-                bottomLeftCornerOfText = (xmin + line_thickness,ymin + line_thickness * 2 + line_height)
-                # Create Text Background Box
-                padding = int(line_height*0.4)
-                start_point = (bottomLeftCornerOfText[0]-padding, bottomLeftCornerOfText[1]-line_height-padding)
-                end_point = (bottomLeftCornerOfText[0]+line_width+padding, bottomLeftCornerOfText[1]+padding)
-                box_color = [0,0,0]
-                cv2.rectangle(cv2_img, start_point, end_point, box_color , -1)
-
-                cv2.putText(cv2_img,text2overlay, 
-                    bottomLeftCornerOfText, 
-                    font, 
-                    fontScale,
-                    fontColor,
-                    thickness,
-                    lineType)
-              
-                # Overlay Data
-                #self.msg_if.pub_warn(line_height)
-                if target_range_m == -999:
-                  tr = '#'
-                else:
-                  tr = ("%.1f" % target_range_m )
-                if target_horz_angle_deg == -999:
-                  th = '#'
-                else:
-                  th = ("%.f" % target_horz_angle_deg)
-
-                if target_vert_angle_deg == -999:
-                  tv = '#'
-                else:
-                  tv = ("%.f" % target_vert_angle_deg)
-
-                text2overlay= tr + "m," + th + "d," + tv + "d"
-                text_size = cv2.getTextSize(text2overlay, 
-                    font, 
-                    fontScale,
-                    thickness)
-                line_height = text_size[0][1]
-                line_width = text_size[0][0]
-                bottomLeftCornerOfText = (xmin + line_thickness,ymin + line_thickness * 2 + line_height * 3)
-                # Create Text Background Box
-                padding = int(line_height*0.4)
-                start_point = (bottomLeftCornerOfText[0]-padding, bottomLeftCornerOfText[1]-line_height-padding)
-                end_point = (bottomLeftCornerOfText[0]+line_width+padding, bottomLeftCornerOfText[1]+padding)
-                box_color = [0,0,0]
-                cv2.rectangle(cv2_img, start_point, end_point, box_color , -1)
-                cv2.putText(cv2_img,text2overlay, 
-                    bottomLeftCornerOfText, 
-                    font, 
-                    fontScale,
-                    fontColor,
-                    thickness,
-                    lineType) 
-
-              # Publish new image to ros
-              if not nepi_ros.is_shutdown() and has_subscribers: #and has_subscribers:
-                  #Convert OpenCV image to ROS image
-                  cv2_shape = cv2_img.shape
-                  if  cv2_shape[2] == 3:
-                    encode = 'bgr8'
-                  else:
-                    encode = 'mono8'
-                  img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding=encode)
-                  img_out_msg.header.stamp = ros_timestamp
-                  self.node_if.publish_pub('image_pub', img_out_msg)
-              # Save Data if Time
-              if should_save:
-                self.save_data_if.save_img2file(data_product,cv2_img,ros_timestamp,save_check = False)
+              if  cv2_shape[2] == 3:
+                encode = 'bgr8'
+              else:
+                encode = 'mono8'
+              self.image_if.publish_cv2_image(cv2_img, timestamp = ros_timestamp, encoding = encode)
+          # Save Data if Time
+          if should_save:
+            self.save_data_if.save_img2file(data_product,cv2_img,ros_timestamp,save_check = False)
 
 
 
