@@ -507,7 +507,7 @@ class NepiAiTargetingApp(object):
         factory_data_rates[d] = [0.0, 0.0, 100.0] # Default to 0Hz save rate, set last save = 0.0, max rate = 100.0Hz
     if 'targeting_image' in self.data_products:
         factory_data_rates['targeting_image'] = [1.0, 0.0, 100.0] 
-    self.save_data_if = SaveDataIF(data_product_names = self.data_products, factory_data_rate_dict = factory_data_rates)
+    self.save_data_if = SaveDataIF(data_products = self.data_products_list, factory_rate_dict = factory_data_rates)
 
 
     ##############################
