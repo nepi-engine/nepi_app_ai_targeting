@@ -32,7 +32,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from nepi_sdk import nepi_ros
+from nepi_sdk import nepi_sdk
 from nepi_sdk import nepi_utils
 from nepi_sdk import nepi_pc 
 from nepi_sdk import nepi_img 
@@ -42,11 +42,11 @@ from geometry_msgs.msg import Vector3
 from sensor_msgs.msg import Image
 from rospy.numpy_msg import numpy_msg
 from cv_bridge import CvBridge
-from nepi_ros_interfaces.msg import BoundingBox, BoundingBoxes, BoundingBox3D, BoundingBoxes3D, \
+from nepi_sdk_interfaces.msg import BoundingBox, BoundingBoxes, BoundingBox3D, BoundingBoxes3D, \
                                     ObjectCount, ClassifierSelection, \
                                     StringArray, TargetLocalization, TargetLocalizations
-from nepi_ros_interfaces.srv import ImageClassifierStatusQuery, ImageClassifierStatusQueryRequest
-from nepi_ros_interfaces.msg import Frame3DTransform
+from nepi_sdk_interfaces.srv import ImageClassifierStatusQuery, ImageClassifierStatusQueryRequest
+from nepi_sdk_interfaces.msg import Frame3DTransform
 from nepi_app_ai_targeting.msg import AiTargetingStatus, AiTargetingTargets
 
 
@@ -97,7 +97,7 @@ class NepiAiTargetingApp(object):
     'velocity_pxps': [0,0],
     'enter_m': [0,0,0],
     'velocity_mps': [0,0,0],
-    'last_detection_timestamp': nepi_ros.ros_duration(0)                              
+    'last_detection_timestamp': nepi_sdk.ros_duration(0)                              
     }
 
 
@@ -178,11 +178,11 @@ class NepiAiTargetingApp(object):
   DEFAULT_NODE_NAME = "app_ai_targeting" # Can be overwitten by luanch command
   def __init__(self):
     #### APP NODE INIT SETUP ####
-    nepi_ros.init_node(name= self.DEFAULT_NODE_NAME)
+    nepi_sdk.init_node(name= self.DEFAULT_NODE_NAME)
     self.class_name = type(self).__name__
-    self.base_namespace = nepi_ros.get_base_namespace()
-    self.node_name = nepi_ros.get_node_name()
-    self.node_namespace = nepi_ros.get_node_namespace()
+    self.base_namespace = nepi_sdk.get_base_namespace()
+    self.node_name = nepi_sdk.get_node_name()
+    self.node_namespace = nepi_sdk.get_node_namespace()
 
     ##############################  
     # Create Msg Class
@@ -514,7 +514,7 @@ class NepiAiTargetingApp(object):
     message = "APP NOT ENABLED"
     cv2_img = nepi_img.create_message_image(message)
     self.app_ne_img = nepi_img.cv2img_to_rosimg(cv2_img)
-    self.app_ne_img.header.stamp = nepi_ros.ros_time_now()
+    self.app_ne_img.header.stamp = nepi_sdk.get_msg_time()
     self.node_if.publish_pub('image_pub',self.app_ne_img)
 
     message = "WAITING FOR AI DETECTOR TO START"
@@ -528,17 +528,17 @@ class NepiAiTargetingApp(object):
     ##############################
     # Get AI Manager Service Call
     ##AI_MGR_STATUS_SERVICE_NAME = self.ai_mgr_namespace  + "/img_classifier_status_query"
-    #self.AI_MGR_STATUS_SERVICE_NAME = nepi_ros.connect_service(AI_MGR_STATUS_SERVICE_NAME, ImageClassifierStatusQuery)
+    #self.AI_MGR_STATUS_SERVICE_NAME = nepi_sdk.connect_service(AI_MGR_STATUS_SERVICE_NAME, ImageClassifierStatusQuery)
     # Start AI Manager Subscribers
     FOUND_OBJECT_TOPIC = self.ai_mgr_namespace  + "/found_object"
-    self.nepi_ros.create_subscriber(FOUND_OBJECT_TOPIC, ObjectCount, self.foundObjectCb, queue_size = 1)
+    self.nepi_sdk.create_subscriber(FOUND_OBJECT_TOPIC, ObjectCount, self.foundObjectCb, queue_size = 1)
     BOUNDING_BOXES_TOPIC = self.ai_mgr_namespace  + "/bounding_boxes"
-    self.nepi_ros.create_subscriber(BOUNDING_BOXES_TOPIC, BoundingBoxes, self.objectDetectedCb, queue_size = 1)
+    self.nepi_sdk.create_subscriber(BOUNDING_BOXES_TOPIC, BoundingBoxes, self.objectDetectedCb, queue_size = 1)
     time.sleep(1)
 
     # Set up timer callbacks
-    nepi_ros.timer(nepi_ros.ros_duration(self.UDATE_PROCESS_DELAY), self.updaterCb)
-    nepi_ros.timer(nepi_ros.ros_duration(self.IMG_PUB_PROCESS_DELAY), self.imagePubCb)
+    nepi_sdk.timer(nepi_sdk.ros_duration(self.UDATE_PROCESS_DELAY), self.updaterCb)
+    nepi_sdk.timer(nepi_sdk.ros_duration(self.IMG_PUB_PROCESS_DELAY), self.imagePubCb)
 
 
     ## Initiation Complete
@@ -547,7 +547,7 @@ class NepiAiTargetingApp(object):
     self.publish_targets()
 
     # Spin forever (until object is detected)
-    nepi_ros.spin()
+    nepi_sdk.spin()
 
 
 
@@ -720,7 +720,7 @@ class NepiAiTargetingApp(object):
         if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None") or self.reset_image_topic == True:
           update_status = True
           self.reset_image_topic = False
-          image_topic = nepi_ros.find_topic(self.current_image_topic)
+          image_topic = nepi_sdk.find_topic(self.current_image_topic)
           if image_topic == "":
             self.msg_if.pub_warn(" Could not find image update topic: " + self.current_image_topic)
           elif app_enabled == True and image_topic != "None":
@@ -732,11 +732,11 @@ class NepiAiTargetingApp(object):
               self.image_sub = None
 
             self.msg_if.pub_info(" Subscribing to Image topic : " + image_topic)
-            self.image_sub = self.nepi_ros.create_subscriber(image_topic, Image, self.imageCb, queue_size = 1)
+            self.image_sub = self.nepi_sdk.create_subscriber(image_topic, Image, self.imageCb, queue_size = 1)
 
             # Look for Depth Map
             depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
-            depth_map_topic = nepi_ros.find_topic(depth_map_topic)
+            depth_map_topic = nepi_sdk.find_topic(depth_map_topic)
             if depth_map_topic == "":
               depth_map_topic = "None"
               self.has_depth_map = False
@@ -750,12 +750,12 @@ class NepiAiTargetingApp(object):
                 self.depth_map_sub = None
                 time.sleep(1)
               self.msg_if.pub_info(" Subscribing to Depth Map topic : " + depth_map_topic)
-              self.depth_map_sub = self.nepi_ros.create_subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
+              self.depth_map_sub = self.nepi_sdk.create_subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
               update_status = True
               
               # If there is a depth_map, check for pointdcloud
               pointcloud_topic = self.current_image_topic.rsplit('/',1)[0] + "/pointcloud"
-              pointcloud_topic = nepi_ros.find_topic(pointcloud_topic)
+              pointcloud_topic = nepi_sdk.find_topic(pointcloud_topic)
               if pointcloud_topic == "":
                 pointcloud_topic = "None"
                 self.has_pointcloud = False
@@ -788,21 +788,21 @@ class NepiAiTargetingApp(object):
 
       if app_enabled == False:
         #self.msg_if.pub_warn("Publishing Not Enabled image")
-        if not nepi_ros.is_shutdown():
-          self.app_ne_img.header.stamp = nepi_ros.ros_time_now()
+        if not nepi_sdk.is_shutdown():
+          self.app_ne_img.header.stamp = nepi_sdk.get_msg_time()
           self.image_if.publish_cv2_image(self.app_ne_img)
       elif self.classifier_running == False:
-        if not nepi_ros.is_shutdown():
-          self.classifier_nr_img.header.stamp = nepi_ros.ros_time_now()
+        if not nepi_sdk.is_shutdown():
+          self.classifier_nr_img.header.stamp = nepi_sdk.get_msg_time()
           self.image_if.publish_cv2_image(self.classifier_nr_img)
       elif self.classes_selected == False:
-        if not nepi_ros.is_shutdown():
-          self.no_class_img.header.stamp = nepi_ros.ros_time_now()
+        if not nepi_sdk.is_shutdown():
+          self.no_class_img.header.stamp = nepi_sdk.get_msg_time()
           self.image_if.publish_cv2_image(self.no_class_img)
 
 
       # Update Current Targets List based on Age and Publish
-      current_timestamp = nepi_ros.ros_time_now()
+      current_timestamp = nepi_sdk.get_msg_time()
       active_targets_dict = copy.deepcopy(self.active_targets_dict)
       lost_targets_dict = copy.deepcopy(self.lost_targets_dict)
       purge_list = []
@@ -811,7 +811,7 @@ class NepiAiTargetingApp(object):
       for target in active_targets_dict.keys():
         last_timestamp = active_targets_dict[target]['last_detection_timestamp']
         #self.msg_if.pub_warn(target)
-        #self.msg_if.pub_warn(ros_timestamp.to_sec())
+        #self.msg_if.pub_warn(get_msg_timestamp.to_sec())
         #self.msg_if.pub_warn(last_timestamp.to_sec())
         age =(current_timestamp.to_sec() - last_timestamp.to_sec())
         #self.msg_if.pub_warn("Target " + target + " age: " + str(age))
@@ -1001,7 +1001,7 @@ class NepiAiTargetingApp(object):
   ### If object(s) detected, save bounding box info to global
   def objectDetectedCb(self,bounding_boxes_msg):
     app_enabled = self.node_if.get_param('app_enabled')
-    ros_timestamp = bounding_boxes_msg.header.stamp
+    get_msg_timestamp = bounding_boxes_msg.header.stamp
 
     if app_enabled == False:
       self.target_detected = False
@@ -1011,7 +1011,7 @@ class NepiAiTargetingApp(object):
     else:
 
       detect_header = bounding_boxes_msg.header
-      ros_timestamp = bounding_boxes_msg.header.stamp
+      get_msg_timestamp = bounding_boxes_msg.header.stamp
       image_seq_num = bounding_boxes_msg.header.seq
       bbs_msg=copy.deepcopy(bounding_boxes_msg)
       transform = self.node_if.get_param('frame_3d_transform')
@@ -1351,7 +1351,7 @@ class NepiAiTargetingApp(object):
                                   'area_meters': area_meters,
                                   'volume_meters': volume_meters,
                                   'velocity_mps': [0,0,0],
-                                  'last_detection_timestamp': ros_timestamp                              
+                                  'last_detection_timestamp': get_msg_timestamp                              
                                   }
                               active_targets_dict[target_uid] = current_targets_dict[target_uid]
 
@@ -1365,7 +1365,7 @@ class NepiAiTargetingApp(object):
       # Publish and Save 2D Bounding Boxes
       if len(bbs2d) > 0:
         bbs_msg.bounding_boxes = bbs2d
-        if not nepi_ros.is_shutdown():
+        if not nepi_sdk.is_shutdown():
 
           self.node_if.publish_pub('target_boxes_2d_pub', bbs_msg)
           oc_msg = ObjectCount()
@@ -1374,7 +1374,7 @@ class NepiAiTargetingApp(object):
           self.node_if.publish_pub('box_count_pub', oc_msg)
         # Save Data if it is time.
         bbs_dict = dict()
-        bbs_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(bbs_msg.header.stamp)
+        bbs_dict['timestamp'] =  nepi_sdk.get_datetime_str_from_stamp(bbs_msg.header.stamp)
         bbs_dict['image_topic'] = bbs_msg.image_topic
         bbs_dict['image_height'] = bbs_msg.image_height
         bbs_dict['image_width'] = bbs_msg.image_width
@@ -1393,7 +1393,7 @@ class NepiAiTargetingApp(object):
             bb_dict['area_ratio'] = bb_msg.area_ratio
             bb_list.append(bb_dict)
         bbs_dict['bounding_boxes'] = bb_list
-        self.save_data_if.save_dict2file("target_boxes_2d",bbs_dict,ros_timestamp)
+        self.save_data_if.save_dict2file("target_boxes_2d",bbs_dict,get_msg_timestamp)
 
       # Publish and Save Target Localizations
       #self.msg_if.pub_warn("Got tls list: " + str(tls))
@@ -1413,12 +1413,12 @@ class NepiAiTargetingApp(object):
         tls_msg.target_localizations = tls
 
         #self.msg_if.pub_warn("Will pub tls msg: " + str(tls_msg))
-        if not nepi_ros.is_shutdown():
+        if not nepi_sdk.is_shutdown():
           self.node_if.publish_pub('target_localizations_pub', tls_msg)
 
         # Save Data if Time
         tls_dict = dict()
-        tls_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(tls_msg.header.stamp)
+        tls_dict['timestamp'] =  nepi_sdk.get_datetime_str_from_stamp(tls_msg.header.stamp)
         tls_dict['image_topic'] = tls_msg.image_topic
         tls_dict['image_height'] = tls_msg.image_height
         tls_dict['image_width'] = tls_msg.image_width
@@ -1438,7 +1438,7 @@ class NepiAiTargetingApp(object):
             tl_dict['area_ratio'] = tl_msg.area_ratio
             tl_list.append(tl_dict)
         tls_dict['target_locs'] = tl_list
-        self.save_data_if.save_dict2file('target_localizations',tls_dict,ros_timestamp)
+        self.save_data_if.save_dict2file('target_localizations',tls_dict,get_msg_timestamp)
 
       # Pub target count
       tc_msg = ObjectCount()
@@ -1461,7 +1461,7 @@ class NepiAiTargetingApp(object):
         bb3s_msg.depth_map_header = self.depth_map_header
         bb3s_msg.depth_map_topic = self.depth_map_topic
         bb3s_msg.bounding_boxes_3d = bbs3d
-        if not nepi_ros.is_shutdown():
+        if not nepi_sdk.is_shutdown():
           self.node_if.publish_pub('target_boxes_3d_pub', bb3s_msg)
           oc3_msg = ObjectCount()
           oc3_msg.header = detect_header
@@ -1470,7 +1470,7 @@ class NepiAiTargetingApp(object):
 
         # Save Data if Time
         bb3s_dict = dict()
-        bb3s_dict['timestamp'] =  nepi_ros.get_datetime_str_from_stamp(bb3s_msg.header.stamp)
+        bb3s_dict['timestamp'] =  nepi_sdk.get_datetime_str_from_stamp(bb3s_msg.header.stamp)
         bb3s_dict['image_topic'] = bb3s_msg.image_topic
         bb3s_dict['image_height'] = bb3s_msg.image_height
         bb3s_dict['image_width'] = bb3s_msg.image_width
@@ -1488,7 +1488,7 @@ class NepiAiTargetingApp(object):
             bb3_dict['volume_meters'] = bb3_msg.volume_meters
             bb3_list.append(bb3_dict)
         bb3s_dict['bounding_boxes_3d'] = bb3_list
-        self.save_data_if.save_dict2file('target_boxes_3d',bb3s_dict,ros_timestamp)
+        self.save_data_if.save_dict2file('target_boxes_3d',bb3s_dict,get_msg_timestamp)
 
 
   def imagePubCb(self,timer):
@@ -1513,7 +1513,7 @@ class NepiAiTargetingApp(object):
           self.target_locs_lock.release()
 
           current_image_header = img_msg.header
-          ros_timestamp = img_msg.header.stamp     
+          get_msg_timestamp = img_msg.header.stamp     
           cv2_img = nepi_img.rosimg_to_cv2img(img_msg).astype(np.uint8)
           cv2_shape = cv2_img.shape
           self.img_width = cv2_shape[1] 
@@ -1609,17 +1609,17 @@ class NepiAiTargetingApp(object):
                 lineType) 
 
           # Publish new image to ros
-          if not nepi_ros.is_shutdown() and has_subscribers: #and has_subscribers:
+          if not nepi_sdk.is_shutdown() and has_subscribers: #and has_subscribers:
               #Convert OpenCV image to ROS image
               cv2_shape = cv2_img.shape
               if  cv2_shape[2] == 3:
                 encode = 'bgr8'
               else:
                 encode = 'mono8'
-              self.image_if.publish_cv2_image(cv2_img, timestamp = ros_timestamp, encoding = encode)
+              self.image_if.publish_cv2_image(cv2_img, timestamp = get_msg_timestamp, encoding = encode)
           # Save Data if Time
           if should_save:
-            self.save_data_if.save_img2file(data_product,cv2_img,ros_timestamp,save_check = False)
+            self.save_data_if.save_img2file(data_product,cv2_img,get_msg_timestamp,save_check = False)
 
 
 

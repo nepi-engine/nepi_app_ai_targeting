@@ -21,7 +21,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from nepi_sdk import nepi_ros
+from nepi_sdk import nepi_sdk
 from nepi_sdk import nepi_utils
 from nepi_sdk import nepi_pc 
 from nepi_sdk import nepi_img 
@@ -31,9 +31,9 @@ from geometry_msgs.msg import Vector3
 from sensor_msgs.msg import Image
 from rospy.numpy_msg import numpy_msg
 from cv_bridge import CvBridge
-from nepi_ros_interfaces.msg import BoundingBox, BoundingBoxes, BoundingBox3D, BoundingBoxes3D, ObjectCount
-from nepi_ros_interfaces.msg import StringArray, TargetLocalization, TargetLocalizations
-from nepi_ros_interfaces.msg import Frame3DTransform
+from nepi_sdk_interfaces.msg import BoundingBox, BoundingBoxes, BoundingBox3D, BoundingBoxes3D, ObjectCount
+from nepi_sdk_interfaces.msg import StringArray, TargetLocalization, TargetLocalizations
+from nepi_sdk_interfaces.msg import Frame3DTransform
 from nepi_app_ai_targeting.msg import AiTargetingStatus, AiTargetingTargets
 
 
@@ -67,9 +67,9 @@ class ConnectAppAITargeting:
                 ):
         ####  IF INIT SETUP ####
         self.class_name = type(self).__name__
-        self.base_namespace = nepi_ros.get_base_namespace()
-        self.node_name = nepi_ros.get_node_name()
-        self.node_namespace = nepi_ros.get_node_namespace()
+        self.base_namespace = nepi_sdk.get_base_namespace()
+        self.node_name = nepi_sdk.get_node_name()
+        self.node_namespace = nepi_sdk.get_node_namespace()
 
         ##############################  
         # Create Msg Class
@@ -81,10 +81,10 @@ class ConnectAppAITargeting:
         # Initialize Class Variables
 
         if namespace is None:
-            namespace = nepi_ros.create_namespace(self.base_namespace,APP_NODE_NAME)
+            namespace = nepi_sdk.create_namespace(self.base_namespace,APP_NODE_NAME)
         else:
             namespace = namespace
-        self.namespace = nepi_ros.get_full_namespace(namespace)
+        self.namespace = nepi_sdk.get_full_namespace(namespace)
 
 
         ##############################   
@@ -338,10 +338,10 @@ class ConnectAppAITargeting:
         if self.ready is not None:
             self.msg_if.pub_info("Waiting for connection")
             timer = 0
-            time_start = nepi_ros.get_time()
-            while self.ready == False and timer < timeout and not nepi_ros.is_shutdown():
-                nepi_ros.sleep(.1)
-                timer = nepi_ros.get_time() - time_start
+            time_start = nepi_sdk.get_time()
+            while self.ready == False and timer < timeout and not nepi_sdk.is_shutdown():
+                nepi_sdk.sleep(.1)
+                timer = nepi_sdk.get_time() - time_start
             if self.ready == False:
                 self.msg_if.pub_info("Failed to Connect")
             else:
@@ -358,10 +358,10 @@ class ConnectAppAITargeting:
         if self.con_node_if is not None:
             self.msg_if.pub_info("Waiting for connection")
             timer = 0
-            time_start = nepi_ros.get_time()
-            while self.connected == False and timer < timeout and not nepi_ros.is_shutdown():
-                nepi_ros.sleep(.1)
-                timer = nepi_ros.get_time() - time_start
+            time_start = nepi_sdk.get_time()
+            while self.connected == False and timer < timeout and not nepi_sdk.is_shutdown():
+                nepi_sdk.sleep(.1)
+                timer = nepi_sdk.get_time() - time_start
             if self.connected == False:
                 self.msg_if.pub_info("Failed to Connect")
             else:
@@ -376,10 +376,10 @@ class ConnectAppAITargeting:
         if self.con_node_if is not None:
             self.msg_if.pub_info("Waiting for status connection")
             timer = 0
-            time_start = nepi_ros.get_time()
-            while self.status_connected == False and timer < timeout and not nepi_ros.is_shutdown():
-                nepi_ros.sleep(.1)
-                timer = nepi_ros.get_time() - time_start
+            time_start = nepi_sdk.get_time()
+            while self.status_connected == False and timer < timeout and not nepi_sdk.is_shutdown():
+                nepi_sdk.sleep(.1)
+                timer = nepi_sdk.get_time() - time_start
             if self.status_connected == False:
                 self.msg_if.pub_info("Failed to connect to status msg")
             else:
@@ -389,7 +389,7 @@ class ConnectAppAITargeting:
     def get_status_dict(self):
         img_status_dict = None
         if self.status_msg is not None:
-            img_status_dict = nepi_ros.convert_msg2dict(self.status_msg)
+            img_status_dict = nepi_sdk.convert_msg2dict(self.status_msg)
         return self.img_status_dict
 
     def unregister(self):
