@@ -531,9 +531,9 @@ class NepiAiTargetingApp(object):
     #self.AI_MGR_STATUS_SERVICE_NAME = nepi_sdk.connect_service(AI_MGR_STATUS_SERVICE_NAME, ImageClassifierStatusQuery)
     # Start AI Manager Subscribers
     FOUND_OBJECT_TOPIC = self.ai_mgr_namespace  + "/found_object"
-    self.nepi_sdk.create_subscriber(FOUND_OBJECT_TOPIC, ObjectCount, self.foundObjectCb, queue_size = 1)
+    self.nepi_sdk.create_subscriber(FOUND_OBJECT_TOPIC, ObjectCount, self.foundObjectCb, _queue_size = 1)
     BOUNDING_BOXES_TOPIC = self.ai_mgr_namespace  + "/bounding_boxes"
-    self.nepi_sdk.create_subscriber(BOUNDING_BOXES_TOPIC, BoundingBoxes, self.objectDetectedCb, queue_size = 1)
+    self.nepi_sdk.create_subscriber(BOUNDING_BOXES_TOPIC, BoundingBoxes, self.objectDetectedCb, _queue_size = 1)
     time.sleep(1)
 
     # Set up timer callbacks
@@ -732,7 +732,7 @@ class NepiAiTargetingApp(object):
               self.image_sub = None
 
             self.msg_if.pub_info(" Subscribing to Image topic : " + image_topic)
-            self.image_sub = self.nepi_sdk.create_subscriber(image_topic, Image, self.imageCb, queue_size = 1)
+            self.image_sub = self.nepi_sdk.create_subscriber(image_topic, Image, self.imageCb, _queue_size = 1)
 
             # Look for Depth Map
             depth_map_topic = self.current_image_topic.rsplit('/',1)[0] + "/depth_map"
@@ -750,7 +750,7 @@ class NepiAiTargetingApp(object):
                 self.depth_map_sub = None
                 time.sleep(1)
               self.msg_if.pub_info(" Subscribing to Depth Map topic : " + depth_map_topic)
-              self.depth_map_sub = self.nepi_sdk.create_subscriber(depth_map_topic, Image, self.depthMapCb, queue_size = 10)
+              self.depth_map_sub = self.nepi_sdk.create_subscriber(depth_map_topic, Image, self.depthMapCb, _queue_size = 10)
               update_status = True
               
               # If there is a depth_map, check for pointdcloud
