@@ -31,9 +31,9 @@ from geometry_msgs.msg import Vector3
 from sensor_msgs.msg import Image
 from rospy.numpy_msg import numpy_msg
 from cv_bridge import CvBridge
-from nepi_sdk_interfaces.msg import BoundingBox, BoundingBoxes, BoundingBox3D, BoundingBoxes3D, ObjectCount
-from nepi_sdk_interfaces.msg import StringArray, TargetLocalization, TargetLocalizations
-from nepi_sdk_interfaces.msg import Frame3DTransform
+from nepi_interfaces.msg import BoundingBox, BoundingBoxes, BoundingBox3D, BoundingBoxes3D, ObjectCount
+from nepi_interfaces.msg import StringArray, TargetLocalization, TargetLocalizations
+from nepi_interfaces.msg import Frame3DTransform
 from nepi_app_ai_targeting.msg import AiTargetingStatus, AiTargetingTargets
 
 
