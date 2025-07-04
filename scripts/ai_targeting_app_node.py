@@ -101,6 +101,8 @@ class NepiAiTargetingApp(object):
     }
 
 
+  node_if = None
+
   targeting_running = False
   data_products = ["targeting_image","target_boxes_2d","target_boxes_3d","target_localizations"]
   
@@ -515,7 +517,8 @@ class NepiAiTargetingApp(object):
     cv2_img = nepi_img.create_message_image(message)
     self.app_ne_img = nepi_img.cv2img_to_rosimg(cv2_img)
     self.app_ne_img.header.stamp = nepi_sdk.get_msg_time()
-    self.node_if.publish_pub('image_pub',self.app_ne_img)
+    if self.node_if is not None:
+      self.node_if.publish_pub('image_pub',self.app_ne_img)
 
     message = "WAITING FOR AI DETECTOR TO START"
     cv2_img = nepi_img.create_message_image(message)
@@ -635,7 +638,8 @@ class NepiAiTargetingApp(object):
     transform_msg.heading_offset = transform[6]
     status_msg.frame_3d_transform = transform_msg
 
-    self.node_if.publish_pub('status_pub', status_msg)
+    if self.node_if is not None:
+      self.node_if.publish_pub('status_pub', status_msg)
 
  
   ## Status Publisher
@@ -653,7 +657,8 @@ class NepiAiTargetingApp(object):
     targets_ms.available_targets_list = (avail_targets_list)
     targets_ms.selected_target = self.selected_target
     #self.msg_if.pub_warn(" Targets Msg: " + str(targets_ms))
-    self.node_if.publish_pub('targets_pub', targets_ms)     
+    if self.node_if is not None:
+      self.node_if.publish_pub('targets_pub', targets_ms)     
     
  
 
@@ -1367,11 +1372,13 @@ class NepiAiTargetingApp(object):
         bbs_msg.bounding_boxes = bbs2d
         if not nepi_sdk.is_shutdown():
 
-          self.node_if.publish_pub('target_boxes_2d_pub', bbs_msg)
+          if self.node_if is not None:
+            self.node_if.publish_pub('target_boxes_2d_pub', bbs_msg)
           oc_msg = ObjectCount()
           oc_msg.header = detect_header
           oc_msg.count = len(bbs_msg.bounding_boxes)
-          self.node_if.publish_pub('box_count_pub', oc_msg)
+          if self.node_if is not None:
+            self.node_if.publish_pub('box_count_pub', oc_msg)
         # Save Data if it is time.
         bbs_dict = dict()
         bbs_dict['timestamp'] =  nepi_sdk.get_datetime_str_from_stamp(bbs_msg.header.stamp)
@@ -1413,7 +1420,7 @@ class NepiAiTargetingApp(object):
         tls_msg.target_localizations = tls
 
         #self.msg_if.pub_warn("Will pub tls msg: " + str(tls_msg))
-        if not nepi_sdk.is_shutdown():
+        if self.node_if is not None:
           self.node_if.publish_pub('target_localizations_pub', tls_msg)
 
         # Save Data if Time
@@ -1444,7 +1451,8 @@ class NepiAiTargetingApp(object):
       tc_msg = ObjectCount()
       tc_msg.header = detect_header
       tc_msg.count = len(tls)
-      self.node_if.publish_pub('target_count_pub', tc_msg)
+      if self.node_if is not None:
+        self.node_if.publish_pub('target_count_pub', tc_msg)
 
 
       # Publish and Save 3D Bounding Boxes
@@ -1461,7 +1469,7 @@ class NepiAiTargetingApp(object):
         bb3s_msg.depth_map_header = self.depth_map_header
         bb3s_msg.depth_map_topic = self.depth_map_topic
         bb3s_msg.bounding_boxes_3d = bbs3d
-        if not nepi_sdk.is_shutdown():
+        if self.node_if is not None:
           self.node_if.publish_pub('target_boxes_3d_pub', bb3s_msg)
           oc3_msg = ObjectCount()
           oc3_msg.header = detect_header
@@ -1651,8 +1659,9 @@ class NepiAiTargetingApp(object):
       tc_msg = ObjectCount()
       tc_msg.header = found_obj_msg.header
       tc_msg.count = 0
-      self.node_if.publish_pub('target_count_pub', tc_msg)
-      self.node_if.publish_pub('box3d_count_pub', tc_msg)
+      if self.node_if is not None:
+        self.node_if.publish_pub('target_count_pub', tc_msg)
+        self.node_if.publish_pub('box3d_count_pub', tc_msg)
 
 
   def depthMapCb(self,depth_map_msg):
